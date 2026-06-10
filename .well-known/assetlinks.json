@@ -1,0 +1,9 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.cta.sipn",
+    "sha256_cert_fingerprints":
+    ["75:DB:4E:2F:42:FB:4B:2B:B2:CF:C7:60:10:68:F6:04:B2:89:A7:59:1F:57:A5:15:8C:B6:A7:FA:C5:8B:30:EE"]
+  }
+}]

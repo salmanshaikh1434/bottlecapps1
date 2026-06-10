@@ -1,0 +1,262 @@
+input[type=text], input[type=password], input[type=email], input[type=tel] {
+  width: 100%;
+  padding: 8px 20px;
+  margin: 8px 0;
+  display: inline-block;
+  border: 1px solid #ccc;
+  box-sizing: border-box;
+  border-radius: 25px;
+  color: #000;
+}
+
+article article {
+    width: 100%;
+    margin: auto;
+    display: block;
+}
+
+.topic header.entry-header {
+    display: none;
+}
+
+.chat-content h3 span span a{
+    background: #000;
+    padding: 9px 15px 10px 37px;
+    color: #fff;
+    font-size: 13px;
+}
+
+.chat-content h3 span {
+	padding: 0 !important;
+}
+form.bbp-login-form label {
+    color: #555;
+}
+.bbp-reply-author span .avatar {
+    border-radius: 50%;
+}
+ul.bbp-threaded-replies {
+    padding-left: 40px;
+}
+.bbp-reply-author a.bbp-author-link{color:#555;font-weight:700;}
+.bbp-form .form-allowed-tags, .bbp-form .bbp-template-notice{display:none;}
+.bbp-form textarea{
+	background-color: #f4f4f4 !important;
+    height: 100px !important;
+    overflow-y: scroll;
+    font-size: 13px;
+	display: block;
+    width: 100%;
+	padding: 6px 12px;
+	line-height: 1.42857143;
+    color: #555;
+	background-image: none;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    -webkit-box-shadow: inset 0 1px 1px rgb(0 0 0 / 8%);
+    box-shadow: inset 0 1px 1px rgb(0 0 0 / 8%);
+    -webkit-transition: border-color ease-in-out .15s,-webkit-box-shadow ease-in-out .15s;
+    -o-transition: border-color ease-in-out .15s,box-shadow ease-in-out .15s;
+    transition: border-color ease-in-out .15s,box-shadow ease-in-out .15s;
+}
+.bbp-submit-wrapper button, #bbp-cancel-reply-to-link {
+	width: 120px;
+    background-color: #bda766;
+    color: #fff;
+    margin: 15px 0;
+    font-size: 14px !important;
+    border-radius: 25px !important;
+	padding:5px 10px;
+	line-height: 1.5;
+	display: inline-block;
+	font-weight: 400;
+	text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+	touch-action: manipulation;
+    cursor: pointer;
+	user-select: none;
+    background-image: none;
+    border: 1px solid transparent;
+}
+
+.msg-container, #reset_otp, #reset_pass{ display:none; }
+
+input[type="button"] {
+  background-color: #baa86d;
+  color: white;
+  margin: 8px 0;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  border-radius: 25px;
+    display: inline-block;
+    width: 43%;
+    padding: 8px 20px 8px;
+    border: solid 1px #bda766;
+}
+
+input[type="button"]:hover {
+  opacity: 0.8;
+}
+.product_info {
+    color: #000;
+}
+.product_info .pr-info-item label {padding-right:10px;}
+a.prod-box:hover{text-decoration:none;}
+
+.edit-pro-form label{
+	background: #f4f4f4;
+    width: 100%;
+    padding: 8px 20px;
+    margin: 8px 0;
+    display: inline-block;
+    border: 1px solid #ccc;
+    box-sizing: border-box;
+    border-radius: 25px;
+    color: #1d1f1e;
+    font-weight: normal;
+    font-size: 12px;
+    border-color: #f4f4f4;
+}
+.hide-btn{display:none;}
+.flash-message{
+	color: #3ab13a;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+.bbp-reply-content ul {
+    display: none;
+}
+
+.chat-detail ul.bbp-replies li:first-child {
+    display: none;
+}
+
+.edit_comment {color: #1d1f1e;}
+
+.wpcf7-submit {
+    width: 120px;
+    background-color: #bda766 !important;
+    color: #fff !important;
+    margin: 15px 0;
+    font-size: 14px !important;
+    border-radius: 25px !important;
+	display: inline-block;
+    padding: 6px 12px;
+	font-weight: 400;
+    line-height: 1.42857143;
+    text-align: center;
+    white-space: nowrap;
+    vertical-align: middle;
+	font-family: 'helvetica';
+	float:right;
+}
+
+.screen-reader-response {
+	position: relative !important;
+    height: 10px !important;
+    width: 100% !important;
+    overflow: inherit !important;
+	clip: auto !important;
+    clip-path: none !important;
+}
+
+.prof-details .inactive i {
+    color: #FFF;
+}
+
+.nested-replies-sec ul{width:100% !important;}
+.bbp-the-content-wrapper .wp-switch-editor, .add-comment .wp-switch-editor{display:none !important;}
+.mce-container, .mce-container-body {color: #000 !important;}
+.error-message p {color:#EB5412 !important;}
+
+.bbp-form .form-reply-to, .bbp-form label[for=bbp_reply_status], .bbp-form #bbp_reply_status_select{display:none !important;}
+
+
+.fileInput {
+    width: 100%;
+    height: 100%;
+    background-image: none;
+    opacity: 1;
+    color: #fff;
+    cursor: pointer;
+    font-size: 0px;
+    opacity: 0;
+    z-index: 9;
+    position: absolute;
+}
+
+.inputWrapper{
+	height: 50px;
+    width: 50px;
+    overflow: hidden;
+    position: absolute;
+    cursor: pointer;
+    background-color: #baa86d;
+    border-radius: 50%;
+    color: #fff;
+    margin-bottom: 20px;
+    margin-top: 5px;
+    right: 0px;
+    /* float: right; */
+    top: 25px;
+}
+.inputWrapper span{ font-size: 32px;}
+.copied {
+    display: block;
+    position: absolute;
+    top: -16px;
+    right: -90px;
+    width: 89px;
+    background: white;
+    color: #19191b;
+    font-size: 13px;
+}
+.social-icons ul li a.copy-cls{ position: relative !important;}
+.search-load img, .loader img {
+    width: 40px;
+}
+
+.blog-details-sec img {
+    width: auto !important;
+    position: relative !important;
+    max-width: 90% !important;
+    top: -5px !important;
+}
+
+input#bbp_topic_subscription, label[for=bbp_topic_subscription] {display:none;}
+
+/* New home page */
+.profile-pic a img {
+   
+    width:50px; height: 50px;
+}
+
+
+.profile-pic a img {
+  width: 40px;
+  height: auto;
+  position: relative;
+  top: 3px;
+  left: 5px;
+  border-radius: 50%;
+}
+
+.active a#like {
+    background-color: #b7a968;
+    color: #FFF;
+    background-image: url(../images/chat/icon-thumb-hover.png);
+}
+
+html {scroll-behavior: smooth;}
+
+div#editModal {
+    z-index: 9999;
+}
+@media not all and (min-resolution:.001dpcm) { 
+    @media {
+    .profile-pic a img {width:60px !important; height: 60px !important; border-radius: 50%;}
+
+}}

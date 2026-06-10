@@ -1,0 +1,31 @@
+# WordPress core
+/wp-admin/
+/wp-includes/
+
+# Uploads and cache
+/wp-content/uploads/
+/wp-content/cache/
+/wp-content/upgrade/
+
+# Ignore all plugins
+/wp-content/plugins/*
+
+# Except the bar plugin
+!/wp-content/plugins/bar/
+!/wp-content/plugins/bar/bar.php
+
+# Ignore wp-config
+wp-config.php
+
+# Node/Composer
+node_modules/
+vendor/
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+wp-content/themes/SIPN/key/
