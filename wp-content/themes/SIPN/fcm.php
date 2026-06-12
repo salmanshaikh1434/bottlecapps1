@@ -12,7 +12,7 @@ class FCM
         $this->url = 'https://fcm.googleapis.com/v1/projects/sipn-a164d/messages:send';
     }
 
-     public function send_notification($registration_ids, $payload, $device_type)
+     public function send_notification($registration_ids, $payload, $device_type, $notification_id = 0)
 {
     global $wpdb;
     $responses = [];
@@ -39,27 +39,29 @@ class FCM
                 'data' => [
                     'title' => $title,
                     'body' => $body,
+                    'notification_id' => (string) $notification_id,
                 ]
             ]
         ];
 
         $query = $wpdb->prepare("SELECT user_id FROM `wp_devices` WHERE device_id = '%s'", $value);
         $list = $wpdb->get_results($query);
-        $uid = null;
+        $uid = 0;
 
         if (!empty($list) && isset($list[0]->user_id)) {
             $uid = $list[0]->user_id;
         }
 
-        if ($uid !== null) {
-            $query = $wpdb->prepare(
-                "INSERT INTO `notification_log` (`device_id`, `user_id`, `device_type`) VALUES (%s, %d, %s)",
-                $value,
-                $uid,
-                $device_type
-            );
-            $wpdb->query($query);
-        }
+        // Log every delivery (user_id 0 when the device is not linked to a user)
+        // so notification stats reflect the true number sent.
+        $query = $wpdb->prepare(
+            "INSERT INTO `notification_log` (`device_id`, `user_id`, `device_type`, `notification_id`) VALUES (%s, %d, %s, %d)",
+            $value,
+            $uid,
+            $device_type,
+            $notification_id
+        );
+        $wpdb->query($query);
 
         try {
             $response = $this->send($message, $accessToken);

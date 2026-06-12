@@ -10364,6 +10364,15 @@ function bar_featured_clicks_admin_menu()
 		'dashicons-chart-bar',      // icon
 		56                          // position
 	);
+
+	add_submenu_page(
+		'bar-featured-clicks',            // parent slug
+		'Buy Now Clicks',                 // page title
+		'Buy Now Clicks',                 // menu title
+		'manage_options',                 // capability
+		'bar-buynow-clicks',              // slug
+		'bar_render_buynow_clicks_report' // callback
+	);
 }
 add_action('admin_menu', 'bar_featured_clicks_admin_menu');
 
@@ -10379,12 +10388,25 @@ function bar_render_featured_clicks_report()
 	global $wpdb;
 	$table_name = bar_featured_clicks_table();
 
+	// Date-range filter.
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+
+	$where = '1=1';
+	if ($start_date !== '') {
+		$where .= $wpdb->prepare(' AND created >= %s', $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$where .= $wpdb->prepare(' AND created <= %s', $end_date . ' 23:59:59');
+	}
+
 	$totals = $wpdb->get_row(
 		"SELECT
 			COUNT(*) AS total,
 			SUM(source = 'web') AS web,
 			SUM(source = 'app') AS app
-		 FROM $table_name"
+		 FROM $table_name
+		 WHERE $where"
 	);
 
 	$rows = $wpdb->get_results(
@@ -10395,12 +10417,39 @@ function bar_render_featured_clicks_report()
 			SUM(source = 'app') AS app,
 			MAX(created) AS last_click
 		 FROM $table_name
+		 WHERE $where
 		 GROUP BY product_id
 		 ORDER BY total DESC"
 	);
+
+	$export_url = add_query_arg(array(
+		'action'     => 'bar_export_featured_clicks',
+		'start_date' => $start_date,
+		'end_date'   => $end_date,
+		'_wpnonce'   => wp_create_nonce('bar_export_featured_clicks'),
+	), admin_url('admin-ajax.php'));
 	?>
 	<div class="wrap">
 		<h1>Featured Product Clicks</h1>
+
+		<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+			<input type="hidden" name="page" value="bar-featured-clicks" />
+			<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
+			<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
+			<button type="submit" class="button button-primary">Filter</button>
+			<?php if ($start_date !== '' || $end_date !== '') { ?>
+				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=bar-featured-clicks')); ?>">Reset</a>
+			<?php } ?>
+			<a class="button" href="<?php echo esc_url($export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
+		</form>
+
+		<?php if ($start_date !== '' || $end_date !== '') { ?>
+			<p class="description">Showing
+				<?php echo $start_date !== '' ? 'from ' . esc_html($start_date) : 'up to'; ?>
+				<?php echo $end_date !== '' ? ' to ' . esc_html($end_date) : ($start_date !== '' ? ' onward' : 'all dates'); ?>.
+			</p>
+		<?php } ?>
+
 		<p>
 			<strong>Total clicks:</strong> <?php echo (int) ($totals->total ?? 0); ?>
 			&nbsp;|&nbsp; <strong>Web:</strong> <?php echo (int) ($totals->web ?? 0); ?>
@@ -10448,4 +10497,1560 @@ function bar_render_featured_clicks_report()
 		</table>
 	</div>
 	<?php
+}
+
+/**
+ * AJAX handler: exports Featured Clicks as an Excel-compatible CSV file.
+ */
+add_action('wp_ajax_bar_export_featured_clicks', 'bar_ajax_export_featured_clicks');
+function bar_ajax_export_featured_clicks()
+{
+	if (!current_user_can('manage_options')) {
+		wp_die('Unauthorized');
+	}
+	check_admin_referer('bar_export_featured_clicks');
+
+	global $wpdb;
+	$table_name = bar_featured_clicks_table();
+
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+
+	$where = '1=1';
+	if ($start_date !== '') {
+		$where .= $wpdb->prepare(' AND created >= %s', $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$where .= $wpdb->prepare(' AND created <= %s', $end_date . ' 23:59:59');
+	}
+
+	$rows = $wpdb->get_results(
+		"SELECT
+			product_id,
+			COUNT(*) AS total,
+			SUM(source = 'web') AS web,
+			SUM(source = 'app') AS app,
+			MAX(created) AS last_click
+		 FROM $table_name
+		 WHERE $where
+		 GROUP BY product_id
+		 ORDER BY total DESC",
+		ARRAY_A
+	);
+
+	$filename = 'featured-clicks' . ($start_date ? '-' . $start_date : '') . ($end_date ? '-to-' . $end_date : '') . '.xls';
+
+	header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+	header('Content-Disposition: attachment; filename="' . $filename . '"');
+	header('Pragma: no-cache');
+	header('Expires: 0');
+
+	echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+	echo '<head><meta charset="UTF-8"><style>td{mso-number-format:"\@";}</style></head><body>';
+	echo '<table border="1">';
+	echo '<tr><th>Product</th><th>Product ID</th><th>Total Clicks</th><th>Web</th><th>App</th><th>Last Click</th></tr>';
+	foreach ($rows as $row) {
+		$title = get_the_title((int) $row['product_id']);
+		if (!$title) {
+			$title = '(deleted product)';
+		}
+		echo '<tr>';
+		echo '<td>' . esc_html($title) . '</td>';
+		echo '<td>' . (int) $row['product_id'] . '</td>';
+		echo '<td>' . (int) $row['total'] . '</td>';
+		echo '<td>' . (int) $row['web'] . '</td>';
+		echo '<td>' . (int) $row['app'] . '</td>';
+		echo '<td>' . esc_html($row['last_click']) . '</td>';
+		echo '</tr>';
+	}
+	echo '</table></body></html>';
+	exit;
+}
+
+/**
+ * Renders the Buy Now clicks report in wp-admin.
+ * Reads from the existing wp_event_tracking table (event_type = 'buy_now'),
+ * which the Buy Now button already populates on every click (web and app).
+ */
+function bar_render_buynow_clicks_report()
+{
+	if (!current_user_can('manage_options')) {
+		return;
+	}
+
+	global $wpdb;
+	$table_name = $wpdb->prefix . 'event_tracking';
+
+	// Aggregate buy_now clicks per UPC, split web vs app/other.
+	$rows = $wpdb->get_results(
+		"SELECT
+			upc,
+			SUM(click_hit) AS total,
+			SUM(CASE WHEN device_type = 'web' THEN click_hit ELSE 0 END) AS web,
+			SUM(CASE WHEN device_type <> 'web' THEN click_hit ELSE 0 END) AS app,
+			MAX(updated_at) AS last_click
+		 FROM $table_name
+		 WHERE event_type = 'buy_now'
+		 GROUP BY upc
+		 ORDER BY total DESC"
+	);
+
+	// Build a UPC -> product lookup from postmeta (productupc, '#' stripped to match tracking value).
+	$upc_map = array();
+	$meta_rows = $wpdb->get_results(
+		"SELECT post_id, meta_value FROM {$wpdb->postmeta} WHERE meta_key = 'productupc'"
+	);
+	foreach ($meta_rows as $m) {
+		$clean = str_replace('#', '', $m->meta_value);
+		if ($clean !== '') {
+			$upc_map[$clean] = (int) $m->post_id;
+		}
+	}
+
+	// Featured-product filter. ?featured=1 shows only currently featured products.
+	$featured_only = (isset($_GET['featured']) && $_GET['featured'] === '1');
+	$featured_ids = array();
+	if (function_exists('wc_get_featured_product_ids')) {
+		$featured_ids = array_map('intval', wc_get_featured_product_ids());
+	}
+	$featured_lookup = array_flip($featured_ids);
+
+	// Apply the filter and compute totals from the visible rows only.
+	$display_rows = array();
+	$grand_total = 0;
+	$grand_web = 0;
+	$grand_app = 0;
+	foreach ($rows as $row) {
+		$product_id = isset($upc_map[$row->upc]) ? $upc_map[$row->upc] : 0;
+		if ($featured_only && !isset($featured_lookup[$product_id])) {
+			continue;
+		}
+		$row->_product_id = $product_id;
+		$display_rows[] = $row;
+		$grand_total += (int) $row->total;
+		$grand_web   += (int) $row->web;
+		$grand_app   += (int) $row->app;
+	}
+
+	$base_url = admin_url('admin.php?page=bar-buynow-clicks');
+	?>
+	<div class="wrap">
+		<h1>Buy Now Clicks</h1>
+		<ul class="subsubsub">
+			<li>
+				<a href="<?php echo esc_url($base_url); ?>" class="<?php echo $featured_only ? '' : 'current'; ?>">All products</a> |
+			</li>
+			<li>
+				<a href="<?php echo esc_url(add_query_arg('featured', '1', $base_url)); ?>" class="<?php echo $featured_only ? 'current' : ''; ?>">Featured only</a>
+			</li>
+		</ul>
+		<p>
+			&nbsp;|&nbsp; <strong><?php echo $featured_only ? 'Featured products — ' : ''; ?>Total clicks:</strong> <?php echo (int) $grand_total; ?>
+			&nbsp;|&nbsp; <strong>Web:</strong> <?php echo (int) $grand_web; ?>
+			&nbsp;|&nbsp; <strong>App/Other:</strong> <?php echo (int) $grand_app; ?>
+		</p>
+		<table class="wp-list-table widefat fixed striped">
+			<thead>
+				<tr>
+					<th>Product</th>
+					<th>UPC</th>
+					<th>Total Clicks</th>
+					<th>Web</th>
+					<th>App/Other</th>
+					<th>Last Click</th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php if (empty($display_rows)) { ?>
+					<tr><td colspan="6"><?php echo $featured_only ? 'No Buy Now clicks recorded for featured products yet.' : 'No Buy Now clicks recorded yet.'; ?></td></tr>
+				<?php } else {
+					foreach ($display_rows as $row) {
+						$product_id = (int) $row->_product_id;
+						$title = $product_id ? get_the_title($product_id) : '';
+						if (!$title) {
+							$title = '(unmatched UPC)';
+						}
+						$edit_link = $product_id ? get_edit_post_link($product_id) : '';
+						?>
+						<tr>
+							<td>
+								<?php if ($edit_link) { ?>
+									<a href="<?php echo esc_url($edit_link); ?>"><?php echo esc_html($title); ?></a>
+								<?php } else {
+									echo esc_html($title);
+								} ?>
+							</td>
+							<td><?php echo esc_html($row->upc); ?></td>
+							<td><strong><?php echo (int) $row->total; ?></strong></td>
+							<td><?php echo (int) $row->web; ?></td>
+							<td><?php echo (int) $row->app; ?></td>
+							<td><?php echo esc_html($row->last_click); ?></td>
+						</tr>
+					<?php }
+				} ?>
+			</tbody>
+		</table>
+	</div>
+	<?php
+}
+
+/* =========================================================================
+ * Push Notification Statistics
+ * Reports on broadcast push-notification campaigns using the notification_log
+ * table (populated by FCM::send_notification with the campaign post ID).
+ * ========================================================================= */
+
+/**
+ * Ensures notification_log has the columns needed for per-campaign stats.
+ * Adds notification_id and created_at if missing; creates the table if absent.
+ */
+function bar_init_notification_log_schema()
+{
+	if (get_option('bar_notification_log_version') === '1.0') {
+		return;
+	}
+
+	global $wpdb;
+	$table = 'notification_log';
+	$charset_collate = $wpdb->get_charset_collate();
+
+	if ($wpdb->get_var("SHOW TABLES LIKE '$table'") !== $table) {
+		$sql = "CREATE TABLE $table (
+			id bigint(20) NOT NULL AUTO_INCREMENT,
+			device_id varchar(255) NOT NULL,
+			user_id bigint(20) NOT NULL DEFAULT 0,
+			device_type varchar(50) NOT NULL DEFAULT '',
+			notification_id bigint(20) NOT NULL DEFAULT 0,
+			created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY  (id),
+			KEY notification_id (notification_id)
+		) $charset_collate;";
+		require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+		dbDelta($sql);
+	} else {
+		$cols = $wpdb->get_col("SHOW COLUMNS FROM `$table`");
+		if (!in_array('notification_id', $cols)) {
+			$wpdb->query("ALTER TABLE `$table` ADD COLUMN `notification_id` bigint(20) NOT NULL DEFAULT 0");
+			$wpdb->query("ALTER TABLE `$table` ADD KEY `notification_id` (`notification_id`)");
+		}
+		if (!in_array('created_at', $cols)) {
+			$wpdb->query("ALTER TABLE `$table` ADD COLUMN `created_at` timestamp DEFAULT CURRENT_TIMESTAMP");
+		}
+	}
+
+	update_option('bar_notification_log_version', '1.0');
+}
+add_action('init', 'bar_init_notification_log_schema');
+
+/**
+ * Creates the notification_clicks table (records taps/opens of a push).
+ */
+function bar_init_notification_clicks_table()
+{
+	if (get_option('bar_notification_clicks_version') === '1.0') {
+		return;
+	}
+
+	global $wpdb;
+	$table = $wpdb->prefix . 'notification_clicks';
+	$charset_collate = $wpdb->get_charset_collate();
+
+	$sql = "CREATE TABLE $table (
+		id bigint(20) NOT NULL AUTO_INCREMENT,
+		notification_id bigint(20) NOT NULL DEFAULT 0,
+		user_id bigint(20) NOT NULL DEFAULT 0,
+		device_type varchar(50) NOT NULL DEFAULT '',
+		created_at timestamp DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		KEY notification_id (notification_id),
+		KEY created_at (created_at)
+	) $charset_collate;";
+
+	require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+	dbDelta($sql);
+
+	update_option('bar_notification_clicks_version', '1.0');
+}
+add_action('init', 'bar_init_notification_clicks_table');
+
+/**
+ * Returns the notification_clicks table name.
+ */
+function bar_notification_clicks_table()
+{
+	global $wpdb;
+	return $wpdb->prefix . 'notification_clicks';
+}
+
+/**
+ * REST callback: records a notification tap/open.
+ * Accepts JSON { notification_id: int, device_type: "IOS"|"Android" }.
+ * The app should call this when the user opens a push, passing the
+ * notification_id it received in the FCM data payload.
+ */
+function handle_notification_click(WP_REST_Request $request)
+{
+	global $wpdb;
+
+	$params = $request->get_json_params();
+	if (empty($params)) {
+		$params = $request->get_params();
+	}
+
+	$notification_id = isset($params['notification_id']) ? (int) $params['notification_id'] : 0;
+	$device_type     = isset($params['device_type']) ? sanitize_text_field($params['device_type']) : '';
+
+	if ($notification_id <= 0) {
+		return new WP_REST_Response(array(
+			'success' => false,
+			'message' => 'A valid notification_id is required.',
+		), 400);
+	}
+
+	$ok = $wpdb->insert(
+		bar_notification_clicks_table(),
+		array(
+			'notification_id' => $notification_id,
+			'user_id'         => (int) get_current_user_id(),
+			'device_type'     => $device_type,
+		),
+		array('%d', '%d', '%s')
+	);
+
+	return new WP_REST_Response(array('success' => ($ok !== false)), ($ok !== false) ? 200 : 500);
+}
+
+add_action('rest_api_init', function () {
+	register_rest_route('notifications/v2', '/click', array(
+		'methods' => 'POST',
+		'callback' => 'handle_notification_click',
+		'permission_callback' => function ($request) {
+			return true;
+		}
+	));
+});
+
+/**
+ * Registers the Push Notifications report admin menu.
+ */
+function bar_push_stats_admin_menu()
+{
+	add_menu_page(
+		'Push Notifications',          // page title
+		'Push Notifications Stats',          // menu title
+		'manage_options',              // capability
+		'bar-push-stats',              // slug
+		'bar_render_push_stats_report',// callback
+		'dashicons-bell',              // icon
+		57                             // position
+	);
+}
+add_action('admin_menu', 'bar_push_stats_admin_menu');
+
+/**
+ * Renders the push-notification statistics report.
+ */
+function bar_render_push_stats_report()
+{
+	if (!current_user_can('manage_options')) {
+		return;
+	}
+
+	global $wpdb;
+	$table = 'notification_log';
+
+	// Date-range filter (inclusive). Expects YYYY-MM-DD.
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+
+	// Broadcast campaigns are identified by platform device_type ('IOS'/'Android').
+	// This includes historic rows sent before per-campaign tracking existed.
+	$where = "device_type IN ('IOS', 'Android')";
+	if ($start_date !== '') {
+		$where .= $wpdb->prepare(" AND created_at >= %s", $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$where .= $wpdb->prepare(" AND created_at <= %s", $end_date . ' 23:59:59');
+	}
+
+	// Overall totals across all broadcast sends.
+	$totals = $wpdb->get_row(
+		"SELECT
+			COUNT(*) AS total_sent,
+			COUNT(DISTINCT CASE WHEN notification_id > 0 THEN notification_id END) AS campaigns,
+			COUNT(DISTINCT user_id) AS unique_users,
+			SUM(CASE WHEN device_type = 'IOS' THEN 1 ELSE 0 END) AS ios,
+			SUM(CASE WHEN device_type = 'Android' THEN 1 ELSE 0 END) AS android
+		 FROM $table
+		 WHERE $where"
+	);
+
+	// Per-notification (post-wise) breakdown.
+	// Newer sends carry the exact campaign ID (notification_id). Historic sends
+	// have notification_id = 0, so we attribute them to the push-notification post
+	// that was published most recently before each send (matched by created_at).
+	$posts = $wpdb->get_results(
+		"SELECT ID, post_title, post_date
+		 FROM {$wpdb->posts}
+		 WHERE post_type = 'push-notification' AND post_status = 'publish'
+		 ORDER BY post_date ASC"
+	);
+
+	// Build a CASE expression that maps each row to a campaign post ID.
+	$title_map = array();
+	if (!empty($posts)) {
+		$pid_case = "CASE WHEN notification_id > 0 THEN notification_id ";
+		$pid_case .= $wpdb->prepare("WHEN created_at < %s THEN 0 ", $posts[0]->post_date);
+		$count = count($posts);
+		for ($i = 1; $i < $count; $i++) {
+			$pid_case .= $wpdb->prepare("WHEN created_at < %s THEN %d ", $posts[$i]->post_date, (int) $posts[$i - 1]->ID);
+			$title_map[(int) $posts[$i - 1]->ID] = $posts[$i - 1]->post_title;
+		}
+		$pid_case .= $wpdb->prepare("ELSE %d END", (int) $posts[$count - 1]->ID);
+		$title_map[(int) $posts[$count - 1]->ID] = $posts[$count - 1]->post_title;
+	} else {
+		$pid_case = "notification_id";
+	}
+
+	$rows = $wpdb->get_results(
+		"SELECT
+			($pid_case) AS pid,
+			COUNT(*) AS total_sent,
+			SUM(CASE WHEN device_type = 'IOS' THEN 1 ELSE 0 END) AS ios,
+			SUM(CASE WHEN device_type = 'Android' THEN 1 ELSE 0 END) AS android,
+			COUNT(DISTINCT user_id) AS unique_users,
+			MIN(created_at) AS first_sent,
+			MAX(created_at) AS last_sent,
+			MAX(notification_id) AS has_exact
+		 FROM $table
+		 WHERE $where
+		 GROUP BY pid
+		 ORDER BY first_sent DESC"
+	);
+
+	// Number of distinct attributed campaigns (pid > 0).
+	$campaigns_count = 0;
+	foreach ($rows as $r) {
+		if ((int) $r->pid > 0) {
+			$campaigns_count++;
+		}
+	}
+
+	// Notification clicks (taps/opens), keyed by notification_id. Respects the date filter.
+	$clicks_table = bar_notification_clicks_table();
+	$click_where = "notification_id > 0";
+	if ($start_date !== '') {
+		$click_where .= $wpdb->prepare(" AND created_at >= %s", $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$click_where .= $wpdb->prepare(" AND created_at <= %s", $end_date . ' 23:59:59');
+	}
+
+	$click_rows = $wpdb->get_results(
+		"SELECT notification_id, COUNT(*) AS clicks
+		 FROM $clicks_table
+		 WHERE $click_where
+		 GROUP BY notification_id"
+	);
+	$clicks_map = array();
+	$total_clicks = 0;
+	foreach ($click_rows as $cr) {
+		$clicks_map[(int) $cr->notification_id] = (int) $cr->clicks;
+		$total_clicks += (int) $cr->clicks;
+	}
+
+	$overall_ctr = ((int) ($totals->total_sent ?? 0) > 0)
+		? round($total_clicks / (int) $totals->total_sent * 100, 1)
+		: 0;
+
+	$push_export_url = add_query_arg(array(
+		'action'     => 'bar_export_push_stats',
+		'start_date' => $start_date,
+		'end_date'   => $end_date,
+		'_wpnonce'   => wp_create_nonce('bar_export_push_stats'),
+	), admin_url('admin-ajax.php'));
+	?>
+	<div class="wrap">
+		<h1>Push Notification Statistics</h1>
+		<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+			<input type="hidden" name="page" value="bar-push-stats" />
+			<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
+			<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
+			<button type="submit" class="button button-primary">Filter</button>
+			<?php if ($start_date !== '' || $end_date !== '') { ?>
+				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=bar-push-stats')); ?>">Reset</a>
+			<?php } ?>
+			<a class="button" href="<?php echo esc_url($push_export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
+		</form>
+		<?php if ($start_date !== '' || $end_date !== '') { ?>
+			<p class="description">Showing
+				<?php echo $start_date !== '' ? 'from ' . esc_html($start_date) : 'up to'; ?>
+				<?php echo $end_date !== '' ? ' to ' . esc_html($end_date) : ($start_date !== '' ? ' onward' : 'all dates'); ?>.
+			</p>
+		<?php } ?>
+		<h2>Overall</h2>
+		<table class="wp-list-table widefat fixed striped" style="max-width:640px;">
+			<tbody>
+				<tr><td><strong>Total push notifications sent</strong></td><td><?php echo (int) ($totals->total_sent ?? 0); ?></td></tr>
+				<tr><td>Total clicks</td><td><?php echo (int) $total_clicks; ?></td></tr>
+				<tr><td>Click-through rate</td><td><?php echo esc_html($overall_ctr); ?>%</td></tr>
+				<tr><td>Campaigns sent</td><td><?php echo (int) $campaigns_count; ?></td></tr>
+				<tr><td>Unique users reached</td><td><?php echo (int) ($totals->unique_users ?? 0); ?></td></tr>
+				<tr><td>iOS</td><td><?php echo (int) ($totals->ios ?? 0); ?></td></tr>
+				<tr><td>Android</td><td><?php echo (int) ($totals->android ?? 0); ?></td></tr>
+			</tbody>
+		</table>
+
+		<h2 style="margin-top:24px;">Per Notification</h2>
+		<p class="description">
+			Sends made before per-campaign tracking are attributed to the campaign published just before each send (matched by time, marked <em>approx.</em>).
+			Newer sends use the exact campaign ID.
+		</p>
+		<table class="wp-list-table widefat fixed striped">
+			<thead>
+				<tr>
+					<th>Notification</th>
+					<th>Sent (devices)</th>
+					<th>iOS</th>
+					<th>Android</th>
+					<th>Unique Users</th>
+					<th>Clicks</th>
+					<th>CTR</th>
+					<th>First Sent</th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php if (empty($rows)) { ?>
+					<tr><td colspan="8">No campaign push notifications recorded yet.</td></tr>
+				<?php } else {
+					foreach ($rows as $row) {
+						$pid = (int) $row->pid;
+						$approx = ((int) $row->has_exact === 0); // no exact ID present in this group
+						$clicks = ($pid > 0 && isset($clicks_map[$pid])) ? $clicks_map[$pid] : 0;
+						$ctr = ((int) $row->total_sent > 0) ? round($clicks / (int) $row->total_sent * 100, 1) : 0;
+						if ($pid === 0) {
+							$title = 'Unattributed (before first campaign)';
+							$edit_link = '';
+						} else {
+							$title = isset($title_map[$pid]) ? $title_map[$pid] : get_the_title($pid);
+							if (!$title) {
+								$title = '(notification #' . $pid . ')';
+							}
+							$edit_link = get_edit_post_link($pid);
+						}
+						?>
+						<tr>
+							<td>
+								<?php if ($edit_link) { ?>
+									<a href="<?php echo esc_url($edit_link); ?>"><?php echo esc_html($title); ?></a>
+								<?php } else {
+									echo esc_html($title);
+								} ?>
+								<?php if ($pid > 0 && $approx) { ?>
+									<em style="color:#888;">(approx.)</em>
+								<?php } ?>
+							</td>
+							<td><strong><?php echo (int) $row->total_sent; ?></strong></td>
+							<td><?php echo (int) $row->ios; ?></td>
+							<td><?php echo (int) $row->android; ?></td>
+							<td><?php echo (int) $row->unique_users; ?></td>
+							<td><?php echo (int) $clicks; ?></td>
+							<td><?php echo esc_html($ctr); ?>%</td>
+							<td><?php echo esc_html($row->first_sent); ?></td>
+						</tr>
+					<?php }
+				} ?>
+			</tbody>
+		</table>
+	</div>
+	<?php
+}
+
+/**
+ * AJAX handler: exports Push Notification Stats as an Excel-compatible file.
+ */
+add_action('wp_ajax_bar_export_push_stats', 'bar_ajax_export_push_stats');
+function bar_ajax_export_push_stats()
+{
+	if (!current_user_can('manage_options')) {
+		wp_die('Unauthorized');
+	}
+	check_admin_referer('bar_export_push_stats');
+
+	global $wpdb;
+	$table = 'notification_log';
+
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+
+	$where = "device_type IN ('IOS', 'Android')";
+	if ($start_date !== '') {
+		$where .= $wpdb->prepare(' AND created_at >= %s', $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$where .= $wpdb->prepare(' AND created_at <= %s', $end_date . ' 23:59:59');
+	}
+
+	$posts = $wpdb->get_results(
+		"SELECT ID, post_title, post_date
+		 FROM {$wpdb->posts}
+		 WHERE post_type = 'push-notification' AND post_status = 'publish'
+		 ORDER BY post_date ASC"
+	);
+
+	$title_map = array();
+	if (!empty($posts)) {
+		$pid_case = "CASE WHEN notification_id > 0 THEN notification_id ";
+		$pid_case .= $wpdb->prepare("WHEN created_at < %s THEN 0 ", $posts[0]->post_date);
+		$count = count($posts);
+		for ($i = 1; $i < $count; $i++) {
+			$pid_case .= $wpdb->prepare("WHEN created_at < %s THEN %d ", $posts[$i]->post_date, (int) $posts[$i - 1]->ID);
+			$title_map[(int) $posts[$i - 1]->ID] = $posts[$i - 1]->post_title;
+		}
+		$pid_case .= $wpdb->prepare("ELSE %d END", (int) $posts[$count - 1]->ID);
+		$title_map[(int) $posts[$count - 1]->ID] = $posts[$count - 1]->post_title;
+	} else {
+		$pid_case = "notification_id";
+	}
+
+	$rows = $wpdb->get_results(
+		"SELECT
+			($pid_case) AS pid,
+			COUNT(*) AS total_sent,
+			SUM(CASE WHEN device_type = 'IOS' THEN 1 ELSE 0 END) AS ios,
+			SUM(CASE WHEN device_type = 'Android' THEN 1 ELSE 0 END) AS android,
+			COUNT(DISTINCT user_id) AS unique_users,
+			MIN(created_at) AS first_sent,
+			MAX(notification_id) AS has_exact
+		 FROM $table
+		 WHERE $where
+		 GROUP BY pid
+		 ORDER BY first_sent DESC",
+		ARRAY_A
+	);
+
+	$clicks_table = bar_notification_clicks_table();
+	$click_where = "notification_id > 0";
+	if ($start_date !== '') {
+		$click_where .= $wpdb->prepare(' AND created_at >= %s', $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$click_where .= $wpdb->prepare(' AND created_at <= %s', $end_date . ' 23:59:59');
+	}
+	$click_rows = $wpdb->get_results(
+		"SELECT notification_id, COUNT(*) AS clicks FROM $clicks_table WHERE $click_where GROUP BY notification_id"
+	);
+	$clicks_map = array();
+	foreach ($click_rows as $cr) {
+		$clicks_map[(int) $cr->notification_id] = (int) $cr->clicks;
+	}
+
+	$filename = 'push-notification-stats' . ($start_date ? '-' . $start_date : '') . ($end_date ? '-to-' . $end_date : '') . '.xls';
+
+	header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+	header('Content-Disposition: attachment; filename="' . $filename . '"');
+	header('Pragma: no-cache');
+	header('Expires: 0');
+
+	echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+	echo '<head><meta charset="UTF-8"><style>td{mso-number-format:"\@";}</style></head><body>';
+	echo '<table border="1">';
+	echo '<tr><th>Notification</th><th>Sent (Devices)</th><th>iOS</th><th>Android</th><th>Unique Users</th><th>Clicks</th><th>CTR (%)</th><th>First Sent</th><th>Attribution</th></tr>';
+	foreach ($rows as $row) {
+		$pid    = (int) $row['pid'];
+		$approx = ((int) $row['has_exact'] === 0);
+		$clicks = ($pid > 0 && isset($clicks_map[$pid])) ? $clicks_map[$pid] : 0;
+		$ctr    = ((int) $row['total_sent'] > 0) ? round($clicks / (int) $row['total_sent'] * 100, 1) : 0;
+		if ($pid === 0) {
+			$title = 'Unattributed (before first campaign)';
+		} else {
+			$title = isset($title_map[$pid]) ? $title_map[$pid] : get_the_title($pid);
+			if (!$title) {
+				$title = '(notification #' . $pid . ')';
+			}
+		}
+		$attribution = ($pid > 0 && $approx) ? 'approx.' : 'exact';
+		echo '<tr>';
+		echo '<td>' . esc_html($title) . '</td>';
+		echo '<td>' . (int) $row['total_sent'] . '</td>';
+		echo '<td>' . (int) $row['ios'] . '</td>';
+		echo '<td>' . (int) $row['android'] . '</td>';
+		echo '<td>' . (int) $row['unique_users'] . '</td>';
+		echo '<td>' . (int) $clicks . '</td>';
+		echo '<td>' . esc_html($ctr . '%') . '</td>';
+		echo '<td>' . esc_html($row['first_sent']) . '</td>';
+		echo '<td>' . esc_html($attribution) . '</td>';
+		echo '</tr>';
+	}
+	echo '</table></body></html>';
+	exit;
+}
+
+/* =====================================================================
+ * PRODUCT REQUESTS - user-submitted products pending admin review
+ * Table: wp_product_requests
+ * Endpoint (Android/iOS + Web): POST /wp-json/products/v2/request-add
+ * Admin review panel: wp-admin -> "Product Requests"
+ * ===================================================================== */
+
+define('BAR_PRODUCT_REQUESTS_DB_VERSION', '1.0');
+
+/**
+ * Returns the product-requests table name.
+ */
+function bar_product_requests_table()
+{
+	global $wpdb;
+	return $wpdb->prefix . 'product_requests';
+}
+
+/**
+ * Creates the product-requests table if it does not exist yet.
+ * Runs on every load but only executes dbDelta when the stored DB version
+ * is out of date, so existing installs get the table without reactivating.
+ */
+function bar_init_product_requests_table()
+{
+	if (get_option('bar_product_requests_db_version') === BAR_PRODUCT_REQUESTS_DB_VERSION) {
+		return;
+	}
+
+	global $wpdb;
+	$table_name = bar_product_requests_table();
+	$charset_collate = $wpdb->get_charset_collate();
+
+	$sql = "CREATE TABLE $table_name (
+		id bigint(20) NOT NULL AUTO_INCREMENT,
+		product_name varchar(255) NOT NULL,
+		product_description longtext NOT NULL,
+		product_price varchar(50) DEFAULT NULL,
+		product_image varchar(500) DEFAULT NULL,
+		keyword varchar(255) DEFAULT NULL,
+		submitted_by bigint(20) NOT NULL DEFAULT 0,
+		source varchar(10) NOT NULL DEFAULT 'app',
+		status varchar(20) NOT NULL DEFAULT 'pending',
+		created_product_id bigint(20) NOT NULL DEFAULT 0,
+		reviewed_by bigint(20) NOT NULL DEFAULT 0,
+		reviewed_at datetime DEFAULT NULL,
+		created timestamp DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		KEY status (status),
+		KEY submitted_by (submitted_by)
+	) $charset_collate;";
+
+	require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+	dbDelta($sql);
+
+	update_option('bar_product_requests_db_version', BAR_PRODUCT_REQUESTS_DB_VERSION);
+}
+add_action('init', 'bar_init_product_requests_table');
+
+/**
+ * Decodes a base64 image (with or without data-URI prefix) and stores it in
+ * the WordPress uploads directory. Returns the public URL, or '' on failure.
+ */
+function bar_save_product_request_image($base64)
+{
+	if (empty($base64) || !is_string($base64)) {
+		return '';
+	}
+
+	// Strip a data URI prefix like "data:image/png;base64,...."
+	if (strpos($base64, 'base64,') !== false) {
+		$base64 = substr($base64, strpos($base64, 'base64,') + 7);
+	}
+	$base64 = trim(str_replace(' ', '+', $base64));
+
+	$imgdata = base64_decode($base64, true);
+	if ($imgdata === false || strlen($imgdata) === 0) {
+		return '';
+	}
+
+	$f = finfo_open();
+	$mime_type = finfo_buffer($f, $imgdata, FILEINFO_MIME_TYPE);
+	finfo_close($f);
+
+	$allowed = array(
+		'image/jpeg' => 'jpg',
+		'image/jpg'  => 'jpg',
+		'image/pjpeg' => 'jpg',
+		'image/png'  => 'png',
+		'image/webp' => 'webp',
+		'image/gif'  => 'gif',
+		'image/bmp'  => 'bmp',
+	);
+	if (!isset($allowed[$mime_type])) {
+		return '';
+	}
+	$ext = $allowed[$mime_type];
+
+	$uploaddir = wp_upload_dir();
+	$filename = 'prodreq_' . time() . '_' . wp_rand(1000, 9999) . '.' . $ext;
+	$path = trailingslashit($uploaddir['path']) . $filename;
+
+	if (file_put_contents($path, $imgdata) === false) {
+		return '';
+	}
+
+	return trailingslashit($uploaddir['url']) . $filename;
+}
+
+/**
+ * Register the product-request submission endpoint.
+ * Login is required (app sends a JWT, web sends the cookie + REST nonce).
+ */
+add_action('rest_api_init', function () {
+	register_rest_route('products/v2', '/request-add', array(
+		'methods' => 'POST',
+		'callback' => 'handle_product_request_add',
+		'permission_callback' => function ($request) {
+			if (get_current_user_id() > 0) {
+				return true;
+			}
+			return new WP_Error('rest_forbidden', 'You must be logged in to submit a product.', array('status' => 401));
+		}
+	));
+});
+
+/**
+ * Handles a new product-request submission from app or web.
+ *
+ * Body (JSON): product_name (required), product_description (required),
+ *              product_price (optional), product_image (optional base64),
+ *              keyword (optional), source ('app'|'web', optional).
+ */
+function handle_product_request_add(WP_REST_Request $request)
+{
+	global $wpdb;
+
+	$item = $request->get_json_params();
+	if (empty($item)) {
+		$item = $request->get_params();
+	}
+
+	$user_id = get_current_user_id();
+
+	$name        = isset($item['product_name']) ? sanitize_text_field(trim($item['product_name'])) : '';
+	$description = isset($item['product_description']) ? wp_kses_post(trim($item['product_description'])) : '';
+	$price       = isset($item['product_price']) ? sanitize_text_field(trim($item['product_price'])) : '';
+	$keyword     = isset($item['keyword']) ? sanitize_text_field(trim($item['keyword'])) : '';
+	$image_b64   = isset($item['product_image']) ? $item['product_image'] : '';
+	$source      = (isset($item['source']) && $item['source'] === 'web') ? 'web' : 'app';
+
+	// Mandatory fields
+	if ($name === '' || $description === '') {
+		return new WP_REST_Response(array(
+			'status'  => 'error',
+			'message' => 'Product name and description are required.'
+		), 400);
+	}
+
+	$table = bar_product_requests_table();
+
+	// Duplicate guard 1: an existing published product with the same name
+	$existing_product = $wpdb->get_var($wpdb->prepare(
+		"SELECT ID FROM {$wpdb->posts} WHERE post_type = 'product' AND post_status = 'publish' AND LOWER(post_title) = LOWER(%s) LIMIT 1",
+		$name
+	));
+	if ($existing_product) {
+		return new WP_REST_Response(array(
+			'status'  => 'error',
+			'message' => 'A product with this name already exists.'
+		), 409);
+	}
+
+	// Duplicate guard 2: an identical request already awaiting review
+	$existing_pending = $wpdb->get_var($wpdb->prepare(
+		"SELECT id FROM $table WHERE status = 'pending' AND LOWER(product_name) = LOWER(%s) LIMIT 1",
+		$name
+	));
+	if ($existing_pending) {
+		return new WP_REST_Response(array(
+			'status'  => 'error',
+			'message' => 'This product has already been submitted and is awaiting review.'
+		), 409);
+	}
+
+	// Optional image
+	$image_url = '';
+	if (!empty($image_b64)) {
+		$image_url = bar_save_product_request_image($image_b64);
+	}
+
+	$wpdb->insert(
+		$table,
+		array(
+			'product_name'        => $name,
+			'product_description' => $description,
+			'product_price'       => $price !== '' ? $price : null,
+			'product_image'       => $image_url !== '' ? $image_url : null,
+			'keyword'             => $keyword !== '' ? $keyword : null,
+			'submitted_by'        => $user_id,
+			'source'              => $source,
+			'status'              => 'pending',
+		),
+		array('%s', '%s', '%s', '%s', '%s', '%d', '%s', '%s')
+	);
+
+	$request_id = $wpdb->insert_id;
+
+	if (!$request_id) {
+		return new WP_REST_Response(array(
+			'status'  => 'error',
+			'message' => 'Could not save your submission. Please try again.'
+		), 500);
+	}
+
+	return new WP_REST_Response(array(
+		'status'     => 'success',
+		'message'    => 'Your product ' . $name . ' has been added',
+		'request_id' => (int) $request_id,
+	), 200);
+}
+
+/* ------------------------- ADMIN REVIEW PANEL ------------------------- */
+
+/**
+ * Registers the "Product Requests" admin menu.
+ */
+function bar_product_requests_admin_menu()
+{
+	global $wpdb;
+	$table = bar_product_requests_table();
+	$pending = (int) $wpdb->get_var("SELECT COUNT(*) FROM $table WHERE status = 'pending'");
+
+	$menu_title = 'Product Requests';
+	if ($pending > 0) {
+		$menu_title .= ' <span class="awaiting-mod">' . $pending . '</span>';
+	}
+
+	add_menu_page(
+		'Product Requests',
+		$menu_title,
+		'manage_options',
+		'bar-product-requests',
+		'bar_render_product_requests',
+		'dashicons-plus-alt',
+		57
+	);
+}
+add_action('admin_menu', 'bar_product_requests_admin_menu');
+
+/**
+ * Approve handler: creates a DRAFT WooCommerce product from the request,
+ * attaches the image (if any), and marks the request approved.
+ */
+add_action('admin_post_bar_approve_product_request', 'bar_handle_approve_product_request');
+function bar_handle_approve_product_request()
+{
+	if (!current_user_can('manage_options')) {
+		wp_die('Unauthorized');
+	}
+	$request_id = isset($_POST['request_id']) ? (int) $_POST['request_id'] : 0;
+	check_admin_referer('bar_product_request_' . $request_id);
+
+	global $wpdb;
+	$table = bar_product_requests_table();
+	$row = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table WHERE id = %d", $request_id));
+
+	if (!$row || $row->status !== 'pending') {
+		wp_safe_redirect(add_query_arg(array('page' => 'bar-product-requests', 'msg' => 'invalid'), admin_url('admin.php')));
+		exit;
+	}
+
+	$product_id = 0;
+	if (function_exists('wc_get_product') && class_exists('WC_Product_Simple')) {
+		$product = new WC_Product_Simple();
+		$product->set_name($row->product_name);
+		$product->set_description($row->product_description);
+		$product->set_status('draft');
+		if ($row->product_price !== null && $row->product_price !== '' && is_numeric($row->product_price)) {
+			$product->set_regular_price((string) $row->product_price);
+		}
+		$product_id = $product->save();
+	} else {
+		// Fallback: plain product post as draft
+		$product_id = wp_insert_post(array(
+			'post_title'   => $row->product_name,
+			'post_content' => $row->product_description,
+			'post_status'  => 'draft',
+			'post_type'    => 'product',
+		));
+	}
+
+	if ($product_id && !empty($row->product_image)) {
+		$attach_id = bar_attach_image_url_to_product($row->product_image, $product_id);
+		if ($attach_id) {
+			set_post_thumbnail($product_id, $attach_id);
+		}
+	}
+
+	$wpdb->update(
+		$table,
+		array(
+			'status'             => 'approved',
+			'created_product_id' => (int) $product_id,
+			'reviewed_by'        => get_current_user_id(),
+			'reviewed_at'        => current_time('mysql'),
+		),
+		array('id' => $request_id),
+		array('%s', '%d', '%d', '%s'),
+		array('%d')
+	);
+
+	wp_safe_redirect(add_query_arg(array('page' => 'bar-product-requests', 'msg' => 'approved'), admin_url('admin.php')));
+	exit;
+}
+
+/**
+ * Reject handler: marks the request rejected. No product is created.
+ */
+add_action('admin_post_bar_reject_product_request', 'bar_handle_reject_product_request');
+function bar_handle_reject_product_request()
+{
+	if (!current_user_can('manage_options')) {
+		wp_die('Unauthorized');
+	}
+	$request_id = isset($_POST['request_id']) ? (int) $_POST['request_id'] : 0;
+	check_admin_referer('bar_product_request_' . $request_id);
+
+	global $wpdb;
+	$table = bar_product_requests_table();
+	$wpdb->update(
+		$table,
+		array(
+			'status'      => 'rejected',
+			'reviewed_by' => get_current_user_id(),
+			'reviewed_at' => current_time('mysql'),
+		),
+		array('id' => $request_id, 'status' => 'pending'),
+		array('%s', '%d', '%s'),
+		array('%d', '%s')
+	);
+
+	wp_safe_redirect(add_query_arg(array('page' => 'bar-product-requests', 'msg' => 'rejected'), admin_url('admin.php')));
+	exit;
+}
+
+/**
+ * Creates an attachment from an image URL that already lives in the uploads
+ * directory and returns the attachment ID (0 on failure).
+ */
+function bar_attach_image_url_to_product($image_url, $post_id)
+{
+	$uploaddir = wp_upload_dir();
+	$file_path = str_replace($uploaddir['baseurl'], $uploaddir['basedir'], $image_url);
+
+	if (!file_exists($file_path)) {
+		return 0;
+	}
+
+	$filetype = wp_check_filetype(basename($file_path), null);
+	$attachment = array(
+		'post_mime_type' => $filetype['type'],
+		'post_title'     => preg_replace('/\.[^.]+$/', '', basename($file_path)),
+		'post_content'   => '',
+		'post_status'    => 'inherit',
+		'guid'           => $image_url,
+	);
+
+	require_once(ABSPATH . 'wp-admin/includes/image.php');
+	$attach_id = wp_insert_attachment($attachment, $file_path, $post_id);
+	if (is_wp_error($attach_id) || !$attach_id) {
+		return 0;
+	}
+	$attach_data = wp_generate_attachment_metadata($attach_id, $file_path);
+	wp_update_attachment_metadata($attach_id, $attach_data);
+
+	return $attach_id;
+}
+
+/**
+ * Renders the Product Requests review screen.
+ */
+function bar_render_product_requests()
+{
+	if (!current_user_can('manage_options')) {
+		return;
+	}
+
+	global $wpdb;
+	$table = bar_product_requests_table();
+
+	$status = isset($_GET['status']) ? sanitize_text_field($_GET['status']) : 'pending';
+	if (!in_array($status, array('pending', 'approved', 'rejected', 'all'), true)) {
+		$status = 'pending';
+	}
+
+	$counts = $wpdb->get_row("SELECT
+		SUM(status = 'pending') AS pending,
+		SUM(status = 'approved') AS approved,
+		SUM(status = 'rejected') AS rejected,
+		COUNT(*) AS total
+		FROM $table");
+
+	if ($status === 'all') {
+		$rows = $wpdb->get_results("SELECT * FROM $table ORDER BY created DESC");
+	} else {
+		$rows = $wpdb->get_results($wpdb->prepare("SELECT * FROM $table WHERE status = %s ORDER BY created DESC", $status));
+	}
+
+	$msg = isset($_GET['msg']) ? sanitize_text_field($_GET['msg']) : '';
+	?>
+	<div class="wrap">
+		<h1>Product Requests</h1>
+
+		<?php if ($msg === 'approved') { ?>
+			<div class="notice notice-success is-dismissible"><p>Request approved. A <strong>draft</strong> product was created &mdash; review and publish it from the Products screen.</p></div>
+		<?php } elseif ($msg === 'rejected') { ?>
+			<div class="notice notice-warning is-dismissible"><p>Request rejected.</p></div>
+		<?php } elseif ($msg === 'invalid') { ?>
+			<div class="notice notice-error is-dismissible"><p>That request could not be processed (already reviewed or not found).</p></div>
+		<?php } ?>
+
+		<ul class="subsubsub">
+			<li><a href="<?php echo esc_url(add_query_arg(array('page' => 'bar-product-requests', 'status' => 'pending'), admin_url('admin.php'))); ?>" class="<?php echo $status === 'pending' ? 'current' : ''; ?>">Pending <span class="count">(<?php echo (int) ($counts->pending ?? 0); ?>)</span></a> |</li>
+			<li><a href="<?php echo esc_url(add_query_arg(array('page' => 'bar-product-requests', 'status' => 'approved'), admin_url('admin.php'))); ?>" class="<?php echo $status === 'approved' ? 'current' : ''; ?>">Approved <span class="count">(<?php echo (int) ($counts->approved ?? 0); ?>)</span></a> |</li>
+			<li><a href="<?php echo esc_url(add_query_arg(array('page' => 'bar-product-requests', 'status' => 'rejected'), admin_url('admin.php'))); ?>" class="<?php echo $status === 'rejected' ? 'current' : ''; ?>">Rejected <span class="count">(<?php echo (int) ($counts->rejected ?? 0); ?>)</span></a> |</li>
+			<li><a href="<?php echo esc_url(add_query_arg(array('page' => 'bar-product-requests', 'status' => 'all'), admin_url('admin.php'))); ?>" class="<?php echo $status === 'all' ? 'current' : ''; ?>">All <span class="count">(<?php echo (int) ($counts->total ?? 0); ?>)</span></a></li>
+		</ul>
+
+		<table class="wp-list-table widefat fixed striped" style="margin-top:10px;">
+			<thead>
+				<tr>
+					<th style="width:70px;">Image</th>
+					<th>Product Name</th>
+					<th>Description</th>
+					<th style="width:80px;">Price</th>
+					<th style="width:130px;">Searched For</th>
+					<th style="width:150px;">Submitted By</th>
+					<th style="width:90px;">Source</th>
+					<th style="width:150px;">Submitted</th>
+					<th style="width:90px;">Status</th>
+					<th style="width:170px;">Actions</th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php if (empty($rows)) { ?>
+					<tr><td colspan="10">No requests in this view.</td></tr>
+				<?php } else {
+					foreach ($rows as $row) {
+						$user = $row->submitted_by ? get_userdata($row->submitted_by) : null;
+						$user_label = $user ? $user->display_name . ' (' . $user->user_email . ')' : 'User #' . (int) $row->submitted_by;
+						?>
+						<tr>
+							<td>
+								<?php if (!empty($row->product_image)) { ?>
+									<a href="<?php echo esc_url($row->product_image); ?>" target="_blank"><img src="<?php echo esc_url($row->product_image); ?>" style="width:56px;height:56px;object-fit:cover;border-radius:4px;"></a>
+								<?php } else { echo '&mdash;'; } ?>
+							</td>
+							<td><strong><?php echo esc_html($row->product_name); ?></strong></td>
+							<td><?php echo esc_html(wp_trim_words(wp_strip_all_tags($row->product_description), 25)); ?></td>
+							<td><?php echo $row->product_price !== null && $row->product_price !== '' ? '$' . esc_html($row->product_price) : '&mdash;'; ?></td>
+							<td><?php echo $row->keyword ? esc_html($row->keyword) : '&mdash;'; ?></td>
+							<td><?php echo esc_html($user_label); ?></td>
+							<td><?php echo esc_html(strtoupper($row->source)); ?></td>
+							<td><?php echo esc_html($row->created); ?></td>
+							<td>
+								<?php
+								$badge_color = array('pending' => '#b26a00', 'approved' => '#1a7f37', 'rejected' => '#b32d2e');
+								$c = $badge_color[$row->status] ?? '#555';
+								?>
+								<span style="color:#fff;background:<?php echo $c; ?>;padding:3px 8px;border-radius:10px;font-size:11px;text-transform:uppercase;"><?php echo esc_html($row->status); ?></span>
+							</td>
+							<td>
+								<?php if ($row->status === 'pending') { ?>
+									<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;">
+										<input type="hidden" name="action" value="bar_approve_product_request">
+										<input type="hidden" name="request_id" value="<?php echo (int) $row->id; ?>">
+										<?php wp_nonce_field('bar_product_request_' . $row->id); ?>
+										<button type="submit" class="button button-primary" onclick="return confirm('Approve and create a draft product?');">Approve</button>
+									</form>
+									<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="display:inline;">
+										<input type="hidden" name="action" value="bar_reject_product_request">
+										<input type="hidden" name="request_id" value="<?php echo (int) $row->id; ?>">
+										<?php wp_nonce_field('bar_product_request_' . $row->id); ?>
+										<button type="submit" class="button" onclick="return confirm('Reject this request?');">Reject</button>
+									</form>
+								<?php } elseif ($row->status === 'approved' && $row->created_product_id) {
+									$edit_link = get_edit_post_link($row->created_product_id);
+									if ($edit_link) { ?>
+										<a class="button" href="<?php echo esc_url($edit_link); ?>">Edit draft product</a>
+									<?php } else { echo '&mdash;'; }
+								} else { echo '&mdash;'; } ?>
+							</td>
+						</tr>
+					<?php }
+				} ?>
+			</tbody>
+		</table>
+	</div>
+	<?php
+}
+
+
+/* =====================================================================
+ * FEATURED PRODUCT VIEWS (impressions) tracking
+ * Table: wp_bar_featured_views
+ * Endpoint: POST /wp-json/products/v2/featured-view
+ *   body: { product_id: int, source: "web"|"app" }
+ *      or { product_ids: [int, ...], source: "web"|"app" }
+ * Admin report: wp-admin -> Featured Clicks -> Featured Views
+ * ===================================================================== */
+
+define('BAR_FEATURED_VIEWS_DB_VERSION', '1.0');
+
+/**
+ * Returns the featured-views table name.
+ */
+function bar_featured_views_table()
+{
+	global $wpdb;
+	return $wpdb->prefix . 'bar_featured_views';
+}
+
+/**
+ * Creates the featured-views table if it does not exist yet.
+ */
+function bar_init_featured_views_table()
+{
+	if (get_option('bar_featured_views_db_version') === BAR_FEATURED_VIEWS_DB_VERSION) {
+		return;
+	}
+
+	global $wpdb;
+	$table_name = bar_featured_views_table();
+	$charset_collate = $wpdb->get_charset_collate();
+
+	$sql = "CREATE TABLE $table_name (
+		id bigint(20) NOT NULL AUTO_INCREMENT,
+		product_id bigint(20) NOT NULL,
+		user_id bigint(20) NOT NULL DEFAULT 0,
+		source varchar(10) NOT NULL DEFAULT 'web',
+		created timestamp DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY  (id),
+		KEY product_id (product_id),
+		KEY created (created)
+	) $charset_collate;";
+
+	require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+	dbDelta($sql);
+
+	update_option('bar_featured_views_db_version', BAR_FEATURED_VIEWS_DB_VERSION);
+}
+add_action('init', 'bar_init_featured_views_table');
+
+/**
+ * Inserts a featured-product view (impression) into the tracking table.
+ *
+ * @param int    $product_id The viewed product ID.
+ * @param string $source     'web' or 'app'.
+ * @param int    $user_id    Logged-in user ID, 0 for guests.
+ * @return bool True on success.
+ */
+function bar_record_featured_view($product_id, $source = 'web', $user_id = 0)
+{
+	global $wpdb;
+
+	$product_id = (int) $product_id;
+	if ($product_id <= 0) {
+		return false;
+	}
+
+	$source = ($source === 'app') ? 'app' : 'web';
+
+	$inserted = $wpdb->insert(
+		bar_featured_views_table(),
+		array(
+			'product_id' => $product_id,
+			'user_id'    => (int) $user_id,
+			'source'     => $source,
+		),
+		array('%d', '%d', '%s')
+	);
+
+	return $inserted !== false;
+}
+
+/**
+ * REST callback: records one or more featured-product views.
+ * Accepts JSON { product_id: int } or { product_ids: [int, ...] }, plus optional source.
+ */
+function handle_featured_view(WP_REST_Request $request)
+{
+	$params = $request->get_json_params();
+	if (empty($params)) {
+		$params = $request->get_params();
+	}
+
+	$source = isset($params['source']) ? sanitize_text_field($params['source']) : 'web';
+
+	$ids = array();
+	if (isset($params['product_ids']) && is_array($params['product_ids'])) {
+		foreach ($params['product_ids'] as $pid) {
+			$pid = (int) $pid;
+			if ($pid > 0) {
+				$ids[] = $pid;
+			}
+		}
+	}
+	if (isset($params['product_id']) && (int) $params['product_id'] > 0) {
+		$ids[] = (int) $params['product_id'];
+	}
+	$ids = array_values(array_unique($ids));
+
+	if (empty($ids)) {
+		return new WP_REST_Response(array(
+			'success' => false,
+			'message' => 'A valid product_id is required.',
+		), 400);
+	}
+
+	$user_id = get_current_user_id();
+	$recorded = 0;
+	foreach ($ids as $pid) {
+		if (bar_record_featured_view($pid, $source, $user_id)) {
+			$recorded++;
+		}
+	}
+
+	return new WP_REST_Response(array(
+		'success'  => $recorded > 0,
+		'recorded' => $recorded,
+	), $recorded > 0 ? 200 : 500);
+}
+
+add_action('rest_api_init', function () {
+	register_rest_route('products/v2', '/featured-view', array(
+		'methods' => 'POST',
+		'callback' => 'handle_featured_view',
+		'permission_callback' => function ($request) {
+			return true;
+		}
+	));
+});
+
+/**
+ * Adds the "Featured Views" report as a submenu under the existing
+ * "Featured Clicks" menu. Registered on a later priority so the parent
+ * menu (priority 10) already exists.
+ */
+add_action('admin_menu', function () {
+	add_submenu_page(
+		'bar-featured-clicks',
+		'Featured Views',
+		'Featured Views',
+		'manage_options',
+		'bar-featured-views',
+		'bar_render_featured_views_report'
+	);
+}, 11);
+
+/**
+ * Renders the Featured Views report: per-product impressions, clicks and CTR.
+ */
+function bar_render_featured_views_report()
+{
+	if (!current_user_can('manage_options')) {
+		return;
+	}
+
+	global $wpdb;
+	$views_table  = bar_featured_views_table();
+	$clicks_table = bar_featured_clicks_table();
+
+	// Date-range filter.
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+
+	$where = '1=1';
+	if ($start_date !== '') {
+		$where .= $wpdb->prepare(' AND v.created >= %s', $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$where .= $wpdb->prepare(' AND v.created <= %s', $end_date . ' 23:59:59');
+	}
+
+	$totals_where = str_replace('v.created', 'created', $where);
+	$totals = $wpdb->get_row(
+		"SELECT
+			COUNT(*) AS total,
+			SUM(source = 'web') AS web,
+			SUM(source = 'app') AS app
+		 FROM $views_table
+		 WHERE $totals_where"
+	);
+
+	$rows = $wpdb->get_results(
+		"SELECT
+			v.product_id,
+			COUNT(*) AS views,
+			SUM(v.source = 'web') AS web,
+			SUM(v.source = 'app') AS app,
+			MAX(v.created) AS last_view,
+			(SELECT COUNT(*) FROM $clicks_table c WHERE c.product_id = v.product_id) AS clicks
+		 FROM $views_table v
+		 WHERE $where
+		 GROUP BY v.product_id
+		 ORDER BY views DESC"
+	);
+
+	$export_url = add_query_arg(array(
+		'action'     => 'bar_export_featured_views',
+		'start_date' => $start_date,
+		'end_date'   => $end_date,
+		'_wpnonce'   => wp_create_nonce('bar_export_featured_views'),
+	), admin_url('admin-ajax.php'));
+	?>
+	<div class="wrap">
+		<h1>Featured Product Views</h1>
+
+		<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+			<input type="hidden" name="page" value="bar-featured-views" />
+			<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
+			<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
+			<button type="submit" class="button button-primary">Filter</button>
+			<?php if ($start_date !== '' || $end_date !== '') { ?>
+				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=bar-featured-views')); ?>">Reset</a>
+			<?php } ?>
+			<a class="button" href="<?php echo esc_url($export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
+		</form>
+
+		<?php if ($start_date !== '' || $end_date !== '') { ?>
+			<p class="description">Showing
+				<?php echo $start_date !== '' ? 'from ' . esc_html($start_date) : 'up to'; ?>
+				<?php echo $end_date !== '' ? ' to ' . esc_html($end_date) : ($start_date !== '' ? ' onward' : 'all dates'); ?>.
+			</p>
+		<?php } ?>
+
+		<p>
+			<strong>Total views:</strong> <?php echo (int) ($totals->total ?? 0); ?>
+			&nbsp;|&nbsp; <strong>Web:</strong> <?php echo (int) ($totals->web ?? 0); ?>
+			&nbsp;|&nbsp; <strong>App:</strong> <?php echo (int) ($totals->app ?? 0); ?>
+		</p>
+		<p class="description">A view is recorded the first time a featured product becomes visible in the carousel (once per page load). CTR = clicks &divide; views.</p>
+		<table class="wp-list-table widefat fixed striped">
+			<thead>
+				<tr>
+					<th>Product</th>
+					<th>Product ID</th>
+					<th>Views</th>
+					<th>Clicks</th>
+					<th>CTR</th>
+					<th>Web</th>
+					<th>App</th>
+					<th>Last Viewed</th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php if (empty($rows)) { ?>
+					<tr><td colspan="8">No views recorded yet.</td></tr>
+				<?php } else {
+					foreach ($rows as $row) {
+						$title = get_the_title($row->product_id);
+						if (!$title) {
+							$title = '(deleted product)';
+						}
+						$edit_link = get_edit_post_link($row->product_id);
+						$views = (int) $row->views;
+						$clicks = (int) $row->clicks;
+						$ctr = $views > 0 ? round(($clicks / $views) * 100, 1) . '%' : '&mdash;';
+						?>
+						<tr>
+							<td>
+								<?php if ($edit_link) { ?>
+									<a href="<?php echo esc_url($edit_link); ?>"><?php echo esc_html($title); ?></a>
+								<?php } else {
+									echo esc_html($title);
+								} ?>
+							</td>
+							<td><?php echo (int) $row->product_id; ?></td>
+							<td><strong><?php echo $views; ?></strong></td>
+							<td><?php echo $clicks; ?></td>
+							<td><?php echo $ctr; ?></td>
+							<td><?php echo (int) $row->web; ?></td>
+							<td><?php echo (int) $row->app; ?></td>
+							<td><?php echo esc_html($row->last_view); ?></td>
+						</tr>
+					<?php }
+				} ?>
+			</tbody>
+		</table>
+	</div>
+	<?php
+}
+
+/**
+ * AJAX handler: exports Featured Views as an Excel-compatible file.
+ */
+add_action('wp_ajax_bar_export_featured_views', 'bar_ajax_export_featured_views');
+function bar_ajax_export_featured_views()
+{
+	if (!current_user_can('manage_options')) {
+		wp_die('Unauthorized');
+	}
+	check_admin_referer('bar_export_featured_views');
+
+	global $wpdb;
+	$views_table  = bar_featured_views_table();
+	$clicks_table = bar_featured_clicks_table();
+
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+
+	$where = '1=1';
+	if ($start_date !== '') {
+		$where .= $wpdb->prepare(' AND v.created >= %s', $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$where .= $wpdb->prepare(' AND v.created <= %s', $end_date . ' 23:59:59');
+	}
+
+	$rows = $wpdb->get_results(
+		"SELECT
+			v.product_id,
+			COUNT(*) AS views,
+			SUM(v.source = 'web') AS web,
+			SUM(v.source = 'app') AS app,
+			MAX(v.created) AS last_view,
+			(SELECT COUNT(*) FROM $clicks_table c WHERE c.product_id = v.product_id) AS clicks
+		 FROM $views_table v
+		 WHERE $where
+		 GROUP BY v.product_id
+		 ORDER BY views DESC",
+		ARRAY_A
+	);
+
+	$filename = 'featured-views' . ($start_date ? '-' . $start_date : '') . ($end_date ? '-to-' . $end_date : '') . '.xls';
+
+	header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+	header('Content-Disposition: attachment; filename="' . $filename . '"');
+	header('Pragma: no-cache');
+	header('Expires: 0');
+
+	echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+	echo '<head><meta charset="UTF-8"><style>td{mso-number-format:"\@";}</style></head><body>';
+	echo '<table border="1">';
+	echo '<tr><th>Product</th><th>Product ID</th><th>Views</th><th>Clicks</th><th>CTR (%)</th><th>Web</th><th>App</th><th>Last Viewed</th></tr>';
+	foreach ($rows as $row) {
+		$title = get_the_title((int) $row['product_id']);
+		if (!$title) {
+			$title = '(deleted product)';
+		}
+		$views_val  = (int) $row['views'];
+		$clicks_val = (int) $row['clicks'];
+		$ctr = $views_val > 0 ? round(($clicks_val / $views_val) * 100, 1) : 0;
+		echo '<tr>';
+		echo '<td>' . esc_html($title) . '</td>';
+		echo '<td>' . (int) $row['product_id'] . '</td>';
+		echo '<td>' . $views_val . '</td>';
+		echo '<td>' . $clicks_val . '</td>';
+		echo '<td>' . esc_html($ctr . '%') . '</td>';
+		echo '<td>' . (int) $row['web'] . '</td>';
+		echo '<td>' . (int) $row['app'] . '</td>';
+		echo '<td>' . esc_html($row['last_view']) . '</td>';
+		echo '</tr>';
+	}
+	echo '</table></body></html>';
+	exit;
 }

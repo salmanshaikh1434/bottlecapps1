@@ -3843,7 +3843,7 @@
 				$k++;
 				array_push($arrfive, $value);
 				if ($i == 500 || $k == count($andriod_device_ids)) {
-					$result = $fcm->send_notification($arrfive, $arrNotification, "Android");
+					$result = $fcm->send_notification($arrfive, $arrNotification, "Android", $post->ID);
 					$arrfive = array();
 					$i = 0;
 				}
@@ -3857,7 +3857,7 @@
 				$m++;
 				array_push($arrinfive, $value);
 				if ($l == 500 || $m == count($ios_device_ids)) {
-					$result2 = $fcm->send_notification($arrinfive, $arrNotification, "IOS");
+					$result2 = $fcm->send_notification($arrinfive, $arrNotification, "IOS", $post->ID);
 					$arrinfive = array();
 					$l = 0;
 				}

@@ -378,7 +378,7 @@
                   </div>
                 </div> -->
                 <div class="search-bar search-bar-custom">
-                  <form class="form active" action="https://sipnbourbon.com/">
+                  <form class="form active" action="<?php echo esc_url(home_url('/')); ?>">
 
                     <input class="form-control active <?php if ($post_slug == 'buy-now') {
                       echo "find-buynow";
@@ -465,7 +465,7 @@
       </div>
       <!-- <div class="full-bar">
                 <div class="search-bar">
-                    <form class="form mob_form" action="https://sipnbourbon.com/">
+                    <form class="form mob_form" action="<?php echo esc_url(home_url('/')); ?>">
                         <label><i class="fa fa-search fa-mob"></i></label>
                         <input class="form-control <?php //if($post_slug=='buy-now') { echo "find-buynow"; } else if($post_slug=='bourbons-to-stock-at-home') { echo "find-bar"; } ?>" name="s" required type="search" for="search" placeholder="E.g. Maker's Mark" id="mob_header_search">
       <div class="result-sec1" style="display:none;"></div>
@@ -753,8 +753,241 @@
                       <button id="over21" class="age-under">I am Over 21</button>
                   </div>
               </div>
-          </div> 
+          </div>
       </div>
   <?php endif; ?>
+
+  <?php
+  /* ===== Add New Product: global modal + empty-search injector ===== */
+  $prg_logged_in = is_user_logged_in();
+  $prg_endpoint  = esc_url(get_site_url() . '/wp-json/products/v2/request-add');
+  $prg_nonce     = wp_create_nonce('wp_rest');
+  $prg_return_url = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '/';
+  $prg_login_url  = esc_url(home_url('/login') . '?redirect_to=' . rawurlencode($prg_return_url));
+  ?>
+  <?php if ($prg_logged_in) { ?>
+  <div id="prg-modal" class="prg-modal" aria-hidden="true">
+    <div class="prg-sheet">
+      <div class="prg-view" id="prg-form-view">
+        <div class="prg-header">
+          <h2 class="prg-title">Create Product</h2>
+        </div>
+        <div class="prg-body">
+          <label class="prg-label">Product Image</label>
+          <label for="prg-image" class="prg-image-card">
+            <span class="prg-image-icon" id="prg-image-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="#1a1a1a" stroke-width="2"/><circle cx="8.5" cy="10" r="1.6" fill="#1a1a1a"/><path d="M4.5 17.5l4.5-4.2 3 2.6 3.6-4.6 4 6.2" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            <span class="prg-image-texts">
+              <span class="prg-image-title" id="prg-image-title">Add Image</span>
+              <span class="prg-image-sub" id="prg-image-sub">Add Image for this product</span>
+            </span>
+            <input type="file" id="prg-image" accept="image/*" hidden>
+          </label>
+          <label class="prg-label" for="prg-name">Product Name</label>
+          <input type="text" id="prg-name" class="prg-input" placeholder="Enter product name" maxlength="200">
+          <label class="prg-label" for="prg-desc">Product Description</label>
+          <textarea id="prg-desc" class="prg-input prg-textarea" placeholder="Enter product description"></textarea>
+          <label class="prg-label" for="prg-price">Product Price</label>
+          <input type="text" id="prg-price" class="prg-input" placeholder="Enter product price" inputmode="decimal">
+          <p class="prg-error" id="prg-error"></p>
+        </div>
+        <div class="prg-footer">
+          <div class="btns-cancel-proceed">
+            <button type="button" class="btn btn-profile-cancel" id="prg-cancel-btn">Cancel</button>
+            <button type="button" class="btn btn-profile-save" id="prg-proceed-btn">Proceed</button>
+          </div>
+        </div>
+      </div>
+      <div class="prg-view prg-success" id="prg-success-view" style="display:none;">
+        <div class="prg-check">
+          <svg viewBox="0 0 80 80" width="120" height="120" aria-hidden="true">
+            <circle cx="40" cy="40" r="36" fill="none" stroke="#BDA766" stroke-width="6"/>
+            <path d="M24 41 L36 53 L57 29" fill="none" stroke="#BDA766" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h2 class="prg-voila">Voila!</h2>
+        <p class="prg-success-msg">Your product <span class="prg-gold" id="prg-success-name"></span> has been added</p>
+        <div class="prg-success-actions">
+          <div class="btns-cancel-proceed" style="justify-content:center;">
+            <button type="button" class="btn btn-profile-save" id="prg-done-btn">Done</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <?php } ?>
+
+  <style>
+  .prg-add-btn{display:inline-block;background:linear-gradient(180deg,#dcc88f,#c4a85f);color:#1a1a1a !important;font-weight:700;border:none;border-radius:30px;padding:10px 22px;font-size:14px;cursor:pointer;text-decoration:none;}
+  .prg-add-btn:hover{filter:brightness(1.05);color:#1a1a1a !important;text-decoration:none;}
+  .prg-add-inline{padding:14px 16px;text-align:center;}
+  .prg-add-inline .btn-profile-save{width:auto;min-width:150px;padding:8px 22px;}
+  .prg-add-inline-hint{color:#888;font-size:12px;margin-top:8px;}
+  .prg-modal{position:fixed;inset:0;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:999999;padding:16px;}
+  .prg-modal.open{display:flex;}
+  .prg-sheet{background:#0c0c0c;width:100%;max-width:440px;max-height:92vh;overflow-y:auto;border-radius:18px;color:#fff;box-shadow:0 20px 60px rgba(0,0,0,.5);text-align:left;}
+  .prg-header{position:relative;display:flex;align-items:center;justify-content:center;padding:22px 16px 8px;}
+  .prg-back{position:absolute;left:16px;top:18px;background:none;border:none;color:#fff;font-size:24px;cursor:pointer;line-height:1;}
+  .prg-title{font-size:20px;font-weight:700;color:#fff;margin:0;}
+  .prg-body{padding:14px 22px 8px;}
+  .prg-label{display:block;font-size:14px;font-weight:700;color:#fff;margin:16px 0 8px;}
+  .prg-image-card{display:flex;align-items:center;gap:14px;border:1px solid #3a3a3a;border-radius:12px;padding:14px 16px;cursor:pointer;background:#000;}
+  .prg-image-card input[type="file"]{display:none !important;width:0 !important;height:0 !important;padding:0 !important;}
+  .prg-image-texts{display:flex;flex-direction:column;flex:1 1 auto;min-width:0;}
+  .prg-image-icon{width:42px;height:42px;border-radius:50%;background:#BDA766;display:flex;align-items:center;justify-content:center;background-size:cover;background-position:center;flex:0 0 42px;overflow:hidden;}
+  .prg-image-title{display:block;font-weight:700;color:#fff;font-size:15px;}
+  .prg-image-sub{display:block;color:#9a9a9a;font-size:12px;margin-top:2px;}
+  .prg-input{width:100%;background:#fff;border:none;border-radius:12px;padding:14px 16px;font-size:15px;color:#222;margin:0;box-sizing:border-box;}
+  .prg-input::placeholder{color:#9a9a9a;}
+  .prg-textarea{min-height:120px;resize:vertical;font-family:inherit;}
+  .prg-error{color:#ff6b6b;font-size:13px;min-height:18px;margin:10px 2px 0;}
+  .prg-footer{padding:8px 22px 26px;}
+  .prg-proceed{width:100%;background:linear-gradient(180deg,#dcc88f,#c4a85f);color:#1a1a1a;font-weight:700;border:none;border-radius:30px;padding:16px;font-size:16px;cursor:pointer;}
+  .prg-proceed:disabled{opacity:.6;cursor:default;}
+  .prg-success{padding:50px 26px 36px;text-align:center;display:flex;flex-direction:column;align-items:center;}
+  .prg-check{margin-bottom:18px;}
+  .prg-voila{color:#BDA766;font-size:26px;font-weight:800;margin:0 0 14px;}
+  .prg-success-msg{color:#fff;font-size:18px;font-weight:700;line-height:1.5;margin:0 0 30px;}
+  .prg-gold{color:#BDA766;}
+  .prg-success-actions{display:flex;gap:14px;width:100%;}
+  .prg-done{flex:1;background:linear-gradient(180deg,#dcc88f,#c4a85f);color:#1a1a1a;font-weight:700;border:none;border-radius:30px;padding:15px;font-size:15px;cursor:pointer;}
+  </style>
+
+  <script>
+  (function(){
+    var PR_LOGGED_IN = <?php echo $prg_logged_in ? 'true' : 'false'; ?>;
+    var PR_ENDPOINT  = '<?php echo $prg_endpoint; ?>';
+    var PR_NONCE     = '<?php echo esc_js($prg_nonce); ?>';
+    var PR_LOGIN_URL = '<?php echo esc_js($prg_login_url); ?>';
+    var currentKeyword = '';
+    var imageB64 = '';
+
+    var PRG_ICON = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="14" rx="2.5" stroke="#1a1a1a" stroke-width="2"/><circle cx="8.5" cy="10" r="1.6" fill="#1a1a1a"/><path d="M4.5 17.5l4.5-4.2 3 2.6 3.6-4.6 4 6.2" stroke="#1a1a1a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    function resetImage(){
+      imageB64 = '';
+      var ic = document.getElementById('prg-image-icon');
+      if(ic){ ic.style.backgroundImage=''; ic.innerHTML=PRG_ICON; }
+      var t = document.getElementById('prg-image-title'); if(t) t.textContent='Add Image';
+      var s = document.getElementById('prg-image-sub'); if(s) s.textContent='Add Image for this product';
+      var f = document.getElementById('prg-image'); if(f) f.value='';
+    }
+
+    window.prOpenAddProduct = function(keyword){
+      currentKeyword = keyword || '';
+      if(!PR_LOGGED_IN){ window.location.href = PR_LOGIN_URL; return; }
+      var modal = document.getElementById('prg-modal'); if(!modal) return;
+      document.getElementById('prg-form-view').style.display = 'block';
+      document.getElementById('prg-success-view').style.display = 'none';
+      document.getElementById('prg-name').value = keyword || '';
+      document.getElementById('prg-desc').value = '';
+      document.getElementById('prg-price').value = '';
+      document.getElementById('prg-error').textContent = '';
+      resetImage();
+      modal.classList.add('open'); modal.setAttribute('aria-hidden','false');
+    };
+
+    function closeModal(){
+      var modal = document.getElementById('prg-modal'); if(!modal) return;
+      modal.classList.remove('open'); modal.setAttribute('aria-hidden','true');
+    }
+
+    function bindModal(){
+      var modal = document.getElementById('prg-modal'); if(!modal) return;
+      var close = document.getElementById('prg-close-btn');
+      var cancel = document.getElementById('prg-cancel-btn');
+      var done  = document.getElementById('prg-done-btn');
+      var proceed = document.getElementById('prg-proceed-btn');
+      var fileIn = document.getElementById('prg-image');
+      if(close) close.addEventListener('click', closeModal);
+      if(cancel) cancel.addEventListener('click', closeModal);
+      if(done) done.addEventListener('click', closeModal);
+      modal.addEventListener('click', function(e){ if(e.target === modal) closeModal(); });
+      if(fileIn) fileIn.addEventListener('change', function(){
+        var f = fileIn.files && fileIn.files[0]; if(!f) return;
+        var err = document.getElementById('prg-error');
+        if(f.size > 5*1024*1024){ err.textContent='Image must be under 5MB.'; fileIn.value=''; return; }
+        err.textContent='';
+        var r = new FileReader();
+        r.onload = function(ev){
+          imageB64 = ev.target.result;
+          var ic = document.getElementById('prg-image-icon');
+          ic.textContent=''; ic.style.backgroundImage='url(' + imageB64 + ')';
+          document.getElementById('prg-image-title').textContent='Image selected';
+          document.getElementById('prg-image-sub').textContent=f.name;
+        };
+        r.readAsDataURL(f);
+      });
+      if(proceed) proceed.addEventListener('click', function(){
+        var name = document.getElementById('prg-name').value.trim();
+        var desc = document.getElementById('prg-desc').value.trim();
+        var price= document.getElementById('prg-price').value.trim();
+        var err = document.getElementById('prg-error'); err.textContent='';
+        if(!name || !desc){ err.textContent='Product name and description are required.'; return; }
+        proceed.disabled = true; proceed.textContent='Submitting...';
+        fetch(PR_ENDPOINT, {
+          method:'POST',
+          headers:{ 'Content-Type':'application/json', 'X-WP-Nonce':PR_NONCE },
+          credentials:'same-origin',
+          body: JSON.stringify({ product_name:name, product_description:desc, product_price:price, product_image:imageB64, keyword:currentKeyword, source:'web' })
+        })
+        .then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+        .then(function(res){
+          proceed.disabled=false; proceed.textContent='Proceed';
+          if(res.ok && res.d && res.d.status === 'success'){
+            document.getElementById('prg-success-name').textContent = name;
+            document.getElementById('prg-form-view').style.display='none';
+            document.getElementById('prg-success-view').style.display='flex';
+          } else {
+            err.textContent = (res.d && res.d.message) ? res.d.message : 'Something went wrong. Please try again.';
+          }
+        })
+        .catch(function(){ proceed.disabled=false; proceed.textContent='Proceed'; err.textContent='Network error. Please try again.'; });
+      });
+    }
+
+    var watch = [
+      { sel:'#header-result-sec', input:'#header-search' },
+      { sel:'.result-sec',        input:'#search' },
+      { sel:'.result-sec1',       input:'#mob_header_search' }
+    ];
+
+    function injectInto(el, inputSel){
+      if(!el) return;
+      var html = el.innerHTML || '';
+      var hasLinks = el.querySelector('li a');
+      var inputEl = document.querySelector(inputSel);
+      var kw = inputEl ? inputEl.value.trim() : '';
+      var noRes = /No results found/i.test(html);
+      var emptyList = (/<ul>/i.test(html) && !hasLinks);
+      var shouldShow = (noRes || emptyList) && kw.length > 2;
+      var already = el.querySelector('.prg-add-inline');
+      if(shouldShow){
+        if(already) return;
+        var wrap = document.createElement('div');
+        wrap.className = 'prg-add-inline';
+        wrap.innerHTML = '<div class="btns-cancel-proceed" style="justify-content:center;padding:0;float:none;width:auto;margin:0;"><button type="button" class="btn btn-profile-save">Add New Product</button></div><div class="prg-add-inline-hint">Can’t find it? Add it and we’ll review it.</div>';
+        el.appendChild(wrap);
+        wrap.querySelector('button').addEventListener('click', function(ev){
+          ev.preventDefault(); ev.stopPropagation();
+          window.prOpenAddProduct(kw);
+        });
+      } else if(already){
+        already.parentNode.removeChild(already);
+      }
+    }
+
+    function setup(){
+      bindModal();
+      watch.forEach(function(c){
+        var el = document.querySelector(c.sel);
+        if(!el) return;
+        injectInto(el, c.input);
+        var obs = new MutationObserver(function(){ injectInto(el, c.input); });
+        obs.observe(el, { childList:true, subtree:true });
+      });
+    }
+
+    if(document.readyState === 'loading'){ document.addEventListener('DOMContentLoaded', setup); } else { setup(); }
+  })();
+  </script>
 
 

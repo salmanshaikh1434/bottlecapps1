@@ -365,9 +365,193 @@ if (sanitize_text_field($_GET['s']) != '') {
 							<?php } ?>
 						</div>
 
-					<?php } else { ?>
-						<div>No products match the search criteria.</div>
-					<?php }
+					<?php } else {
+						$pr_keyword   = sanitize_text_field($_GET['s']);
+						$pr_logged_in = is_user_logged_in();
+						$pr_endpoint  = esc_url(get_site_url() . '/wp-json/products/v2/request-add');
+						$pr_nonce     = wp_create_nonce('wp_rest');
+						$pr_login_url = esc_url(wp_login_url(home_url(isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '')));
+						?>
+						<div class="col-md-12 pr-noresult">
+							<p class="pr-noresult-text">No products match &ldquo;<strong><?php echo esc_html($pr_keyword); ?></strong>&rdquo;.</p>
+							<div class="btns-cancel-proceed pr-cta-wrap">
+								<button type="button" class="btn btn-profile-save" onclick="window.prOpenAddProduct('<?php echo esc_js($pr_keyword); ?>')">Add New Product</button>
+							</div>
+							<p class="pr-noresult-hint">Can&rsquo;t find it? Add it and we&rsquo;ll review it shortly.</p>
+						</div>
+
+						<?php if ($pr_logged_in) { ?>
+						<!-- Add New Product modal (matches app design) -->
+						<div id="pr-modal" class="pr-modal" aria-hidden="true">
+							<div class="pr-sheet">
+								<!-- FORM VIEW -->
+								<div class="pr-view" id="pr-form-view">
+									<div class="pr-header">
+										<button type="button" class="pr-back" id="pr-close-btn" aria-label="Close">&#8592;</button>
+										<h2 class="pr-title">Create Product</h2>
+									</div>
+									<div class="pr-body">
+										<label class="pr-label">Product Image</label>
+										<label for="pr-image" class="pr-image-card" id="pr-image-card">
+											<span class="pr-image-icon" id="pr-image-icon">&#128247;</span>
+											<span class="pr-image-texts">
+												<span class="pr-image-title" id="pr-image-title">Add Image</span>
+												<span class="pr-image-sub" id="pr-image-sub">Add Image for this product</span>
+											</span>
+											<input type="file" id="pr-image" accept="image/*" hidden>
+										</label>
+
+										<label class="pr-label" for="pr-name">Product Name</label>
+										<input type="text" id="pr-name" class="pr-input" placeholder="Enter product name" maxlength="200">
+
+										<label class="pr-label" for="pr-desc">Product Description</label>
+										<textarea id="pr-desc" class="pr-input pr-textarea" placeholder="Enter product description"></textarea>
+
+										<label class="pr-label" for="pr-price">Product Price</label>
+										<input type="text" id="pr-price" class="pr-input" placeholder="Enter product price" inputmode="decimal">
+
+										<p class="pr-error" id="pr-error"></p>
+									</div>
+									<div class="pr-footer">
+										<button type="button" class="pr-proceed" id="pr-proceed-btn">Proceed</button>
+									</div>
+								</div>
+
+								<!-- SUCCESS VIEW -->
+								<div class="pr-view pr-success" id="pr-success-view" style="display:none;">
+									<div class="pr-check">
+										<svg viewBox="0 0 80 80" width="120" height="120" aria-hidden="true">
+											<circle cx="40" cy="40" r="36" fill="none" stroke="#c9b06b" stroke-width="6"/>
+											<path d="M24 41 L36 53 L57 29" fill="none" stroke="#c9b06b" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+										</svg>
+									</div>
+									<h2 class="pr-voila">Voila!</h2>
+									<p class="pr-success-msg">Your product <span class="pr-gold" id="pr-success-name"></span> has been added</p>
+									<div class="pr-success-actions">
+										<button type="button" class="pr-done" id="pr-done-btn">Done</button>
+									</div>
+								</div>
+							</div>
+						</div>
+
+						<style>
+						.pr-noresult{text-align:center;padding:40px 15px 80px;}
+						.pr-noresult-text{font-size:18px;color:#444;margin-bottom:18px;}
+						.pr-noresult-hint{margin-top:14px;color:#888;font-size:13px;}
+						.pr-cta-wrap{justify-content:center !important;float:none !important;width:auto !important;padding:0 !important;margin:0 0 4px !important;}
+						.pr-cta-wrap .btn-profile-save{width:auto !important;min-width:170px;padding:10px 28px !important;}
+						.pr-add-btn{display:inline-block;background:linear-gradient(180deg,#dcc88f,#c4a85f);color:#1a1a1a;font-weight:700;border:none;border-radius:30px;padding:13px 30px;font-size:15px;cursor:pointer;text-decoration:none;box-shadow:0 4px 14px rgba(0,0,0,.15);}
+						.pr-add-btn:hover{filter:brightness(1.05);color:#1a1a1a;text-decoration:none;}
+						.pr-modal{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:99999;padding:16px;}
+						.pr-modal.open{display:flex;}
+						.pr-sheet{background:#0c0c0c;width:100%;max-width:440px;max-height:92vh;overflow-y:auto;border-radius:18px;color:#fff;box-shadow:0 20px 60px rgba(0,0,0,.5);}
+						.pr-header{position:relative;display:flex;align-items:center;justify-content:center;padding:22px 16px 8px;}
+						.pr-back{position:absolute;left:16px;top:18px;background:none;border:none;color:#fff;font-size:24px;cursor:pointer;line-height:1;}
+						.pr-title{font-size:20px;font-weight:700;color:#fff;margin:0;}
+						.pr-body{padding:14px 22px 8px;}
+						.pr-label{display:block;font-size:14px;font-weight:700;color:#fff;margin:16px 0 8px;}
+						.pr-image-card{display:flex;align-items:center;gap:14px;border:1px solid #c9b06b;border-radius:12px;padding:16px;cursor:pointer;background:transparent;}
+						.pr-image-icon{width:44px;height:44px;border-radius:50%;background:#c9b06b;display:flex;align-items:center;justify-content:center;font-size:20px;background-size:cover;background-position:center;flex:0 0 44px;}
+						.pr-image-title{display:block;font-weight:700;color:#fff;font-size:15px;}
+						.pr-image-sub{display:block;color:#9a9a9a;font-size:12px;margin-top:2px;}
+						.pr-input{width:100%;background:#fff;border:none;border-radius:12px;padding:14px 16px;font-size:15px;color:#222;margin:0;box-sizing:border-box;}
+						.pr-input::placeholder{color:#9a9a9a;}
+						.pr-textarea{min-height:120px;resize:vertical;font-family:inherit;}
+						.pr-error{color:#ff6b6b;font-size:13px;min-height:18px;margin:10px 2px 0;}
+						.pr-footer{padding:8px 22px 26px;}
+						.pr-proceed{width:100%;background:linear-gradient(180deg,#dcc88f,#c4a85f);color:#1a1a1a;font-weight:700;border:none;border-radius:30px;padding:16px;font-size:16px;cursor:pointer;}
+						.pr-proceed:disabled{opacity:.6;cursor:default;}
+						.pr-success{padding:50px 26px 36px;text-align:center;display:flex;flex-direction:column;align-items:center;}
+						.pr-check{margin-bottom:18px;}
+						.pr-voila{color:#c9b06b;font-size:26px;font-weight:800;margin:0 0 14px;}
+						.pr-success-msg{color:#fff;font-size:18px;font-weight:700;line-height:1.5;margin:0 0 30px;}
+						.pr-gold{color:#c9b06b;}
+						.pr-success-actions{display:flex;gap:14px;width:100%;}
+						.pr-done{flex:1;background:linear-gradient(180deg,#dcc88f,#c4a85f);color:#1a1a1a;font-weight:700;border:none;border-radius:30px;padding:15px;font-size:15px;cursor:pointer;}
+						</style>
+
+						<script>
+						(function(){
+							var modal   = document.getElementById('pr-modal');
+							var openBtn = document.getElementById('pr-open-btn');
+							if(!modal || !openBtn) return;
+							var closeBtn = document.getElementById('pr-close-btn');
+							var doneBtn  = document.getElementById('pr-done-btn');
+							var proceed  = document.getElementById('pr-proceed-btn');
+							var fileIn   = document.getElementById('pr-image');
+							var imgIcon  = document.getElementById('pr-image-icon');
+							var imgTitle = document.getElementById('pr-image-title');
+							var imgSub   = document.getElementById('pr-image-sub');
+							var errEl    = document.getElementById('pr-error');
+							var formView= document.getElementById('pr-form-view');
+							var okView  = document.getElementById('pr-success-view');
+							var okName  = document.getElementById('pr-success-name');
+							var imageB64 = '';
+
+							var ENDPOINT = '<?php echo $pr_endpoint; ?>';
+							var NONCE    = '<?php echo esc_js($pr_nonce); ?>';
+							var KEYWORD  = '<?php echo esc_js($pr_keyword); ?>';
+
+							function openModal(){ modal.classList.add('open'); modal.setAttribute('aria-hidden','false'); }
+							function closeModal(){ modal.classList.remove('open'); modal.setAttribute('aria-hidden','true'); }
+
+							openBtn.addEventListener('click', openModal);
+							closeBtn.addEventListener('click', closeModal);
+							modal.addEventListener('click', function(e){ if(e.target === modal) closeModal(); });
+							doneBtn.addEventListener('click', function(){ closeModal(); });
+
+							fileIn.addEventListener('change', function(){
+								var f = fileIn.files && fileIn.files[0];
+								if(!f) return;
+								if(f.size > 5 * 1024 * 1024){ errEl.textContent = 'Image must be under 5MB.'; fileIn.value=''; return; }
+								errEl.textContent = '';
+								var reader = new FileReader();
+								reader.onload = function(ev){
+									imageB64 = ev.target.result;
+									imgIcon.textContent = '';
+									imgIcon.style.backgroundImage = 'url(' + imageB64 + ')';
+									imgTitle.textContent = 'Image selected';
+									imgSub.textContent = f.name;
+								};
+								reader.readAsDataURL(f);
+							});
+
+							proceed.addEventListener('click', function(){
+								var name = document.getElementById('pr-name').value.trim();
+								var desc = document.getElementById('pr-desc').value.trim();
+								var price= document.getElementById('pr-price').value.trim();
+								errEl.textContent = '';
+								if(!name || !desc){ errEl.textContent = 'Product name and description are required.'; return; }
+								proceed.disabled = true; proceed.textContent = 'Submitting...';
+
+								var payload = { product_name:name, product_description:desc, product_price:price, product_image:imageB64, keyword:KEYWORD, source:'web' };
+
+								fetch(ENDPOINT, {
+									method:'POST',
+									headers:{ 'Content-Type':'application/json', 'X-WP-Nonce':NONCE },
+									credentials:'same-origin',
+									body: JSON.stringify(payload)
+								})
+								.then(function(r){ return r.json().then(function(d){ return {ok:r.ok, d:d}; }); })
+								.then(function(res){
+									proceed.disabled = false; proceed.textContent = 'Proceed';
+									if(res.ok && res.d && res.d.status === 'success'){
+										okName.textContent = name;
+										formView.style.display = 'none';
+										okView.style.display = 'flex';
+									} else {
+										errEl.textContent = (res.d && res.d.message) ? res.d.message : 'Something went wrong. Please try again.';
+									}
+								})
+								.catch(function(){
+									proceed.disabled = false; proceed.textContent = 'Proceed';
+									errEl.textContent = 'Network error. Please try again.';
+								});
+							});
+						})();
+						</script>
+						<?php } /* end logged-in modal */
+					}
 				} else { ?>
 					<div class="col-md-6" style="margin-bottom:200px;">
 						<div class="find chat-detail">

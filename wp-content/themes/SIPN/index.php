@@ -1470,6 +1470,78 @@ if ($the_product) {
                         })();
                     </script>
 
+                    <script>
+                        // Track featured-product VIEWS (impressions). A product is recorded the first
+                        // time its carousel slide becomes visible. Deduped per page load.
+                        (function () {
+                            var endpoint = '<?php echo esc_url_raw(rest_url('products/v2/featured-view')); ?>';
+                            var seen = {};
+
+                            function record(id) {
+                                id = parseInt(id, 10);
+                                if (!id || seen[id]) return;
+                                seen[id] = true;
+                                var payload = JSON.stringify({ product_id: id, source: 'web' });
+                                try {
+                                    if (navigator.sendBeacon) {
+                                        navigator.sendBeacon(endpoint, new Blob([payload], { type: 'application/json' }));
+                                    } else {
+                                        fetch(endpoint, {
+                                            method: 'POST',
+                                            headers: { 'Content-Type': 'application/json' },
+                                            body: payload,
+                                            keepalive: true
+                                        });
+                                    }
+                                } catch (err) { /* tracking must never block UX */ }
+                            }
+
+                            function recordVisible() {
+                                var links = document.querySelectorAll('.featured-product-link[data-product-id]');
+                                var vw = window.innerWidth || document.documentElement.clientWidth;
+                                var vh = window.innerHeight || document.documentElement.clientHeight;
+                                Array.prototype.forEach.call(links, function (l) {
+                                    if (l.offsetParent === null) return; // display:none (inactive slide)
+                                    var r = l.getBoundingClientRect();
+                                    if (r.width === 0 || r.height === 0) return;
+                                    var inView = r.top < vh && r.bottom > 0 && r.left < vw && r.right > 0;
+                                    if (inView) record(l.getAttribute('data-product-id'));
+                                });
+                            }
+
+                            function start() {
+                                if ('IntersectionObserver' in window) {
+                                    var io = new IntersectionObserver(function (entries) {
+                                        entries.forEach(function (en) {
+                                            if (en.isIntersecting && en.intersectionRatio > 0) {
+                                                record(en.target.getAttribute('data-product-id'));
+                                            }
+                                        });
+                                    }, { threshold: 0.3 });
+                                    Array.prototype.forEach.call(
+                                        document.querySelectorAll('.featured-product-link[data-product-id]'),
+                                        function (l) { io.observe(l); }
+                                    );
+                                } else {
+                                    recordVisible();
+                                    window.addEventListener('scroll', recordVisible, { passive: true });
+                                }
+                                // Belt-and-suspenders: when the Bootstrap carousel advances, re-check visibility.
+                                if (window.jQuery) {
+                                    jQuery('#carousel-example-generic').on('slid.bs.carousel', function () {
+                                        setTimeout(recordVisible, 60);
+                                    });
+                                }
+                            }
+
+                            if (document.readyState === 'loading') {
+                                document.addEventListener('DOMContentLoaded', start);
+                            } else {
+                                start();
+                            }
+                        })();
+                    </script>
+
                 </div>
                 <div class="clearfix"></div>
                 <?php
