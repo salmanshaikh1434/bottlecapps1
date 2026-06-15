@@ -3772,9 +3772,9 @@
 
 	function send_push_notifications($post_id, $post, $update)
 	{
-		// Only want to set if this is a new post!
-		if ($update) {
-			//return;
+		// Skip autosaves and revisions - these make save_post fire repeatedly
+		if (wp_is_post_autosave($post_id) || wp_is_post_revision($post_id)) {
+			return;
 		}
 
 		// Only set for post_type = push-notification
@@ -3783,6 +3783,14 @@
 		}
 
 		if ($post->post_status == 'publish') {
+
+			// Send exactly once per notification. The block editor fires save_post
+			// multiple times on an immediate publish, which caused duplicate sends
+			// to every device. This flag makes the send idempotent.
+			if (get_post_meta($post->ID, '_push_sent', true)) {
+				return;
+			}
+			update_post_meta($post->ID, '_push_sent', current_time('mysql'));
 
 			$regId = "c0LcCX_dQnaaFstxXMFatB:APA91bFYy7ItZm1jCt9B6LNKkP69d2XHOa7eFvZWGQ4DP8AhuAid4gOgT6FgAqLcyX6nFK1AXVVArtj8u-fVkPSKsB4WNDrR9MlV1w01x526mh26GhU1-zS0tmIB5V9gPPQmT5ckhgYX";
 			global $wpdb;
