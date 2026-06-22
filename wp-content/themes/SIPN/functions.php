@@ -3461,6 +3461,69 @@
 		}
 	}
 
+	/**
+	 * Admin field: per-product "Buy Now URL".
+	 * Lets admins set a retailer/affiliate link per product instead of
+	 * hardcoding product IDs to retailer URLs in the templates.
+	 */
+	add_action('woocommerce_product_options_general_product_data', 'sipn_buy_now_url_field');
+	function sipn_buy_now_url_field()
+	{
+		woocommerce_wp_text_input(array(
+			'id'          => '_buy_now_url',
+			'label'       => __('Buy Now URL', 'woocommerce'),
+			'placeholder' => 'https://retailer.com/product',
+			'desc_tip'    => true,
+			'description' => __('Optional. External retailer link used by the "Buy Now" button. Leave empty to use the default Buy Now flow.', 'woocommerce'),
+			'type'        => 'url',
+		));
+	}
+
+	add_action('woocommerce_process_product_meta', 'sipn_save_buy_now_url_field');
+	function sipn_save_buy_now_url_field($post_id)
+	{
+		$val = isset($_POST['_buy_now_url']) ? esc_url_raw(trim($_POST['_buy_now_url'])) : '';
+		update_post_meta($post_id, '_buy_now_url', $val);
+	}
+
+	/**
+	 * Resolve the Buy Now URL for a product dynamically.
+	 * Priority: per-product _buy_now_url -> external/affiliate URL -> default /buy-now/ flow.
+	 * Returns array('url' => string, 'rtype' => int). rtype 1 = external link, 0 = internal flow.
+	 */
+	function sipn_get_product_buy_now($product)
+	{
+		if (is_numeric($product)) {
+			$product = wc_get_product($product);
+		}
+		if (!$product) {
+			return array('url' => '', 'rtype' => 0);
+		}
+		$pid = $product->get_id();
+
+		$custom = get_post_meta($pid, '_buy_now_url', true);
+		if (!empty($custom)) {
+			return array('url' => $custom, 'rtype' => 1);
+		}
+
+		$external = '';
+		if (method_exists($product, 'get_product_url')) {
+			$external = $product->get_product_url();
+		}
+		if (empty($external)) {
+			$external = get_post_meta($pid, '_product_url', true);
+		}
+		if (!empty($external)) {
+			return array('url' => $external, 'rtype' => 1);
+		}
+
+		$url = add_query_arg(
+			array('prod_id' => $product->get_sku(), 'prid' => $pid),
+			site_url('/buy-now/')
+		);
+		return array('url' => $url, 'rtype' => 0);
+	}
+
 
 	function wooc_extra_register_fields()
 	{ ?>

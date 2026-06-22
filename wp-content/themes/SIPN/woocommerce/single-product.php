@@ -274,29 +274,17 @@ $produpc = str_replace('#', '', $produpch)
                     </div>
                    <div class="buy-now-new-div test">
 <?php
-$buy_url = '';
-$rtype = 0;
-
-// Static product URLs
-if ($the_product->id == 41478) {
-    $buy_url = 'https://10thwhiskey.com/products/bourbon';
-    $rtype = 1;
-} elseif ($the_product->id == 65244) {
-    $buy_url = 'https://10thwhiskey.com/products/rye';
-    $rtype = 1;
-}
-// Use external URL if available
-elseif (!empty($external_url)) {
+// Buy Now URL resolved dynamically (per-product field -> external URL -> default flow).
+if (function_exists('sipn_get_product_buy_now')) {
+    $buy = sipn_get_product_buy_now($the_product);
+    $buy_url = $buy['url'];
+    $rtype   = $buy['rtype'];
+} elseif (!empty($external_url)) {
     $buy_url = $external_url;
-    $rtype = 1;
-}
-// Default fallback
-else {
+    $rtype   = 1;
+} else {
     $buy_url = add_query_arg(
-        array(
-            'prod_id' => $the_product->sku,
-            'prid'    => $the_product->id
-        ),
+        array('prod_id' => $the_product->sku, 'prid' => $the_product->id),
         site_url('/buy-now/')
     );
     $rtype = 0;

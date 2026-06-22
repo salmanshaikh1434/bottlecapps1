@@ -4350,19 +4350,19 @@ function get_timeline_list($page, $posts_per_page)
 		} else {
 			$is_liked = "0";
 		}
-		$productlis = get_post($not->product_id);
-
-		$product_title = $productlis->post_title;
-		if ($product_title == '') {
-			$product_title = '';
-		}
-		$pid = $not->product_id;
-		if ($pid == '') {
-			$pid = '';
-		}
-		$product_image = get_the_post_thumbnail_url($pid, 'full');
-		if ($product_image == '') {
-			$product_image = '';
+		// Resolve linked product dynamically; stays blank when no product is linked.
+		$pid           = (!empty($not->product_id) && (int) $not->product_id > 0) ? (int) $not->product_id : '';
+		$product_title = '';
+		$product_image = '';
+		if ($pid !== '') {
+			$productlis = get_post($pid);
+			if ($productlis) {
+				$product_title = $productlis->post_title;
+			}
+			$product_image = get_the_post_thumbnail_url($pid, 'full');
+			if (!$product_image) {
+				$product_image = '';
+			}
 		}
 		$query2 = $wpdb->prepare("SELECT count(*) as cnt FROM `wp_sponsored_comments` WHERE spons_id = '%d'", $not->id);
 		$cnt_list2 = $wpdb->get_results($query2);
@@ -4634,41 +4634,48 @@ function handle_timeline_list_test_new(WP_REST_Request $request)
     $sponsored_verify = "https://sipnbourbon.com/wp-content/themes/SIPN/assets/images/icon-sponsored.png";
     update_rewards();
     foreach ($notifications_list as $not) {
-        $productlis = get_post($not->product_id);
+        // Resolve product info dynamically. Ads may have no product linked, so
+        // default every field to empty and only populate when a valid product
+        // actually exists. Keeps the API keys present (no hardcoded references).
+        $pid            = (!empty($not->product_id) && (int) $not->product_id > 0) ? (int) $not->product_id : '';
+        $product_title  = '';
+        $external_url   = '';
+        $product_image  = '';
+        $product_upc    = '';
+        $product_rating = 0;
+        $product_price  = '';
+        $p_sku          = '';
 
-        $product_title = $productlis->post_title;
-        if ($product_title == '') {
-            $product_title = '';
-        }
-        $external_url = $productlis->external_url;
-        if ($external_url == '') {
-            $external_url = '';
-        }
-        $pid = $not->product_id;
-        if ($pid == '') {
-            $pid = '';
-        }
-        $product_image = get_the_post_thumbnail_url($pid, 'full');
-        if ($product_image == '') {
-            $product_image = '';
-        }
-        $abc = get_post_meta($pid, 'productupc', true);
-        $product_upc = str_replace("#", "", $abc);
-        if ($product_upc == '') {
-            $product_upc = '';
-        }
-        $the_product = wc_get_product($pid);
-        $product_rating = $the_product->average_rating;
-        if ($product_rating == '') {
-            $product_rating = 0;
-        }
-        $product_price = $the_product->price;
-        if ($product_price == '') {
-            $product_price = '';
-        }
-        $p_sku = $the_product->sku;
-        if ($p_sku == '') {
-            $p_sku = '';
+        if ($pid !== '') {
+            $productlis = get_post($pid);
+            if ($productlis) {
+                $product_title = $productlis->post_title;
+                $external_url  = isset($productlis->external_url) ? $productlis->external_url : '';
+            }
+            $product_image = get_the_post_thumbnail_url($pid, 'full');
+            if (!$product_image) {
+                $product_image = '';
+            }
+            $abc         = get_post_meta($pid, 'productupc', true);
+            $product_upc = str_replace("#", "", (string) $abc);
+
+            if (function_exists('wc_get_product')) {
+                $the_product = wc_get_product($pid);
+                if ($the_product) {
+                    $product_rating = $the_product->get_average_rating();
+                    if ($product_rating == '') {
+                        $product_rating = 0;
+                    }
+                    $product_price = $the_product->get_price();
+                    if ($product_price == '') {
+                        $product_price = '';
+                    }
+                    $p_sku = $the_product->get_sku();
+                    if ($p_sku == '') {
+                        $p_sku = '';
+                    }
+                }
+            }
         }
 
         $query = $wpdb->prepare("SELECT count(*) as cnt FROM wp_sponsored_likes WHERE  spons_id =$not->id");
@@ -5036,41 +5043,48 @@ function handle_timeline_list(WP_REST_Request $request)
 	$sponsored_verify = "https://sipnbourbon.com/wp-content/themes/SIPN/assets/images/icon-sponsored.png";
 	update_rewards();
 	foreach ($notifications_list as $not) {
-		$productlis = get_post($not->product_id);
+		// Resolve product info dynamically. Ads may have no product linked, so
+		// default every field to empty and only populate when a valid product
+		// actually exists. Keeps the API keys present (no hardcoded references).
+		$pid            = (!empty($not->product_id) && (int) $not->product_id > 0) ? (int) $not->product_id : '';
+		$product_title  = '';
+		$external_url   = '';
+		$product_image  = '';
+		$product_upc    = '';
+		$product_rating = 0;
+		$product_price  = '';
+		$p_sku          = '';
 
-		$product_title = $productlis->post_title;
-		if ($product_title == '') {
-			$product_title = '';
-		}
-		$external_url = $productlis->external_url;
-		if ($external_url == '') {
-			$external_url = '';
-		}
-		$pid = $not->product_id;
-		if ($pid == '') {
-			$pid = '';
-		}
-		$product_image = get_the_post_thumbnail_url($pid, 'full');
-		if ($product_image == '') {
-			$product_image = '';
-		}
-		$abc = get_post_meta($pid, 'productupc', true);
-		$product_upc = str_replace("#", "", $abc);
-		if ($product_upc == '') {
-			$product_upc = '';
-		}
-		$the_product = wc_get_product($pid);
-		$product_rating = $the_product->average_rating;
-		if ($product_rating == '') {
-			$product_rating = 0;
-		}
-		$product_price = $the_product->price;
-		if ($product_price == '') {
-			$product_price = '';
-		}
-		$p_sku = $the_product->sku;
-		if ($p_sku == '') {
-			$p_sku = '';
+		if ($pid !== '') {
+			$productlis = get_post($pid);
+			if ($productlis) {
+				$product_title = $productlis->post_title;
+				$external_url  = isset($productlis->external_url) ? $productlis->external_url : '';
+			}
+			$product_image = get_the_post_thumbnail_url($pid, 'full');
+			if (!$product_image) {
+				$product_image = '';
+			}
+			$abc         = get_post_meta($pid, 'productupc', true);
+			$product_upc = str_replace("#", "", (string) $abc);
+
+			if (function_exists('wc_get_product')) {
+				$the_product = wc_get_product($pid);
+				if ($the_product) {
+					$product_rating = $the_product->get_average_rating();
+					if ($product_rating == '') {
+						$product_rating = 0;
+					}
+					$product_price = $the_product->get_price();
+					if ($product_price == '') {
+						$product_price = '';
+					}
+					$p_sku = $the_product->get_sku();
+					if ($p_sku == '') {
+						$p_sku = '';
+					}
+				}
+			}
 		}
 
 		$query = $wpdb->prepare("SELECT count(*) as cnt FROM wp_sponsored_likes WHERE  spons_id =$not->id");

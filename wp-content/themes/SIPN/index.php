@@ -713,6 +713,13 @@ if (is_user_logged_in()) {
             $timeline_res_sponsored = get_timeline_list('1', '10');
             //   echo "<pre>";print_r($timeline_res_sponsored);exit;
             foreach ($timeline_res_sponsored['sponsored_ads'] as $spons) {
+                // If no click-through link is set, fall back to the linked product's page.
+                if (empty($spons['link']) && !empty($spons['product_id']) && (int) $spons['product_id'] > 0) {
+                    $spons_fallback = get_permalink((int) $spons['product_id']);
+                    if ($spons_fallback) {
+                        $spons['link'] = $spons_fallback;
+                    }
+                }
                 ?>
                 <div class="inner-content" id="sponsmsg-<?php echo $spons['spons_id']; ?>">
                     <div class="user-feed">
@@ -761,18 +768,12 @@ if (is_user_logged_in()) {
                                         <a href="javascript:void(0);"><?php echo $spons['company_name']; ?></a>
                                         <span class="company_verified"><img alt="company_logo" width="23" height="23"
                                                 src="<?php echo $spons['spons_verified']; ?>"></span> 
-                                        <?php if ($spons['product_title'] != '') {
-                                            $the_product = wc_get_product($spons['product_id']); ?>
+                                        <?php if ($spons['product_title'] != '') { ?>
                                             <span class="sumss recordaddclick" data-actiontype="ProductLink"
                                                 data-id="<?php echo $spons['spons_id']; ?>" data-from="website">
                                                 <a
-                                                    href="https://pursuitspirits.com/triple-mash-bourbon/"
-                                                    title="<?php echo $spons['product_title']; ?>" target="_blank"><?php $p = $spons['product_title'];
-                                                       if ($p == "Sipn Bourbon - Home is where Bourbon is") {
-                                                           $spons['product_title'] = '';
-                                                       }
-                                                       echo $spons['product_title']; ?>
-                                                           
+                                                    href="<?php echo $spons['link']; ?>"
+                                                    title="<?php echo $spons['product_title']; ?>" target="_blank"><?php echo $spons['product_title']; ?>
                                                        </a></span>
                                             <br>
                                             <small class=""><?php echo $spons['spons_date']; ?>, Sponsored</small>
@@ -798,9 +799,6 @@ if (is_user_logged_in()) {
                                     }
                                 } else {
                                     $spons_link = $spons['link'];
-                                }
-                                if($spons['spons_id'] == 39){
-                                    $spons_link = 'https://onelink.to/a48ht7';
                                 }
                                 if (is_user_logged_in() && $current_user->data->validate_email == '0') {
                                     ?>
@@ -915,29 +913,21 @@ if (is_user_logged_in()) {
                         </div>
                         <div class="options4 options">
     <?php
-    $bourbon_rabbi_ids = [41478, 65938, 65941, 65942, 65939, 65943, 65944, 65945, 65946, 65947, 72093, 72096, 73504,74181,74495];
-
-    if (in_array($the_product->id, $bourbon_rabbi_ids)) { ?>
+    // Buy Now link is taken dynamically from the ad's own link (wp_sponsored_ads.link).
+    $spons_buy_upc = (!empty($spons['product_id']) && (int) $spons['product_id'] > 0)
+        ? str_replace('#', '', (string) get_post_meta((int) $spons['product_id'], 'productupc', true))
+        : '';
+    if ($spons['link'] != '') { ?>
         <a class="buynow post-buynow recordaddclick"
            href="<?php echo $spons['link']; ?>"
            target="_blank"
            data-actiontype="buy_now"
+           data-id="<?php echo $spons['spons_id']; ?>"
+           data-from="website"
            data-rtype="1"
-           data-pupc="<?php echo $produpc; ?>">
+           data-pupc="<?php echo esc_attr($spons_buy_upc); ?>">
             <button class="search">Buy Now</button>
         </a>
-    <?php } else { ?>
-        <?php if ($spons['product_title'] != '') { ?>
-            <div>
-                <a href="https://pursuitspirits.com/triple-mash-bourbon/"
-                   class="buynow post-buynow recordaddclick"
-                   data-actiontype="BuyNow"
-                   data-id="<?php echo $spons['spons_id']; ?>"
-                   data-from="website" target="_blank">
-                    <button class="search">Buy Now</button>
-                </a>
-            </div>
-        <?php } ?>
     <?php } ?>
 </div>
 
@@ -1242,59 +1232,19 @@ if ($the_product) {
     $produpch = get_post_meta($pid, 'productupc', true);
     $produpc = !empty($produpch) ? str_replace('#', '', $produpch) : '';
 
-    $bourbon_rabbi_ids = [65938, 65941, 65942, 65939, 65943, 65944, 65945, 65946, 65947];
+    // Buy Now URL resolved dynamically from the product's own settings (no hardcoded IDs).
+    $sipn_buy = sipn_get_product_buy_now($the_product);
 
 ?>
 <div>
 
-<?php if ($pid == 41478) { ?>
+<?php if (!empty($sipn_buy['url'])) { ?>
 
     <a href="javascript:void(0);"
        class="buynow post-buynow recordprodevent"
-       data-prurl="https://10thwhiskey.com/products/bourbon"
+       data-prurl="<?php echo esc_url($sipn_buy['url']); ?>"
        data-actiontype="buy_now"
-       data-rtype="1"
-       data-pupc="<?php echo esc_attr($produpc); ?>">
-        <button class="search">Buy Now</button>
-    </a>
-
-<?php } elseif ($pid == 65244) { ?>
-
-    <a href="javascript:void(0);"
-       class="buynow post-buynow recordprodevent"
-       data-prurl="https://10thwhiskey.com/products/rye"
-       data-actiontype="buy_now"
-       data-rtype="1"
-       data-pupc="<?php echo esc_attr($produpc); ?>">
-        <button class="search">Buy Now</button>
-    </a>
-
-<?php } elseif (in_array($pid, $bourbon_rabbi_ids)) { ?>
-
-    <a href="javascript:void(0);"
-       class="buynow post-buynow recordprodevent"
-       data-prurl="http://shop.bourbonrabbi.com"
-       data-actiontype="buy_now"
-       data-rtype="1"
-       data-pupc="<?php echo esc_attr($produpc); ?>">
-        <button class="search">Buy Now</button>
-    </a>
-
-<?php } elseif (!empty($sku)) { ?>
-
-    <a href="javascript:void(0);"
-       class="buynow post-buynow recordprodevent"
-       data-prurl="<?php echo esc_url(
-            add_query_arg(
-                array(
-                    'prod_id' => $sku,
-                    'prid' => $pid
-                ),
-                site_url('/buy-now/')
-            )
-       ); ?>"
-       data-actiontype="buy_now"
-       data-rtype="0"
+       data-rtype="<?php echo (int) $sipn_buy['rtype']; ?>"
        data-pupc="<?php echo esc_attr($produpc); ?>">
         <button class="search">Buy Now</button>
     </a>
