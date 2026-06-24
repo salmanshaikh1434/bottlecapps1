@@ -10369,23 +10369,88 @@ add_action('rest_api_init', function () {
  */
 function bar_featured_clicks_admin_menu()
 {
+	// Single top-level "Stats" menu that houses every report as a submenu.
 	add_menu_page(
-		'Featured Clicks',          // page title
-		'Featured Clicks',          // menu title
+		'Stats',                    // page title
+		'Stats',                    // menu title
 		'manage_options',           // capability
-		'bar-featured-clicks',      // slug
-		'bar_render_featured_clicks_report', // callback
-		'dashicons-chart-bar',      // icon
-		56                          // position
+		'sipn-stats',               // parent slug
+		'bar_render_featured_views_report', // default callback (Featured Views)
+		'dashicons-chart-area',     // icon
+		'26.1'                      // position: immediately after "Sponsored
+		                            // Ads" (26). Unique float avoids the
+		                            // WooCommerce menu cluster at 55-58 that
+		                            // was silently dropping this menu.
 	);
 
+	// Featured Views (default page; reuse parent slug so it isn't duplicated).
 	add_submenu_page(
-		'bar-featured-clicks',            // parent slug
-		'Buy Now Clicks',                 // page title
-		'Buy Now Clicks',                 // menu title
-		'manage_options',                 // capability
-		'bar-buynow-clicks',              // slug
-		'bar_render_buynow_clicks_report' // callback
+		'sipn-stats',
+		'Featured Views',
+		'Featured Views',
+		'manage_options',
+		'sipn-stats',
+		'bar_render_featured_views_report'
+	);
+
+	// Buy Now Clicks (slug preserved for existing links/bookmarks).
+	add_submenu_page(
+		'sipn-stats',
+		'Buy Now Clicks',
+		'Buy Now Clicks',
+		'manage_options',
+		'bar-buynow-clicks',
+		'bar_render_buynow_clicks_report'
+	);
+
+	// Push Notifications (slug preserved).
+	add_submenu_page(
+		'sipn-stats',
+		'Push Notifications',
+		'Push Notifications',
+		'manage_options',
+		'bar-push-stats',
+		'bar_render_push_stats_report'
+	);
+
+	// Verified Users (new).
+	add_submenu_page(
+		'sipn-stats',
+		'Verified Users',
+		'Verified Users',
+		'manage_options',
+		'bar-verified-users',
+		'bar_render_verified_users_report'
+	);
+
+	// User Engagement (new).
+	add_submenu_page(
+		'sipn-stats',
+		'User Engagement',
+		'User Engagement',
+		'manage_options',
+		'bar-user-engagement',
+		'bar_render_user_engagement_report'
+	);
+
+	// Sponsored Ads (new).
+	add_submenu_page(
+		'sipn-stats',
+		'Sponsored Ads',
+		'Sponsored Ads',
+		'manage_options',
+		'bar-sponsored-ads',
+		'bar_render_sponsored_ads_report'
+	);
+
+	// Redirect/Alias for bar-featured-views so old links/bookmarks don't break
+	add_submenu_page(
+		null,
+		'Featured Views',
+		'Featured Views',
+		'manage_options',
+		'bar-featured-views',
+		'bar_render_featured_views_report'
 	);
 }
 add_action('admin_menu', 'bar_featured_clicks_admin_menu');
@@ -10447,12 +10512,12 @@ function bar_render_featured_clicks_report()
 		<h1>Featured Product Clicks</h1>
 
 		<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-			<input type="hidden" name="page" value="bar-featured-clicks" />
+			<input type="hidden" name="page" value="sipn-stats" />
 			<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
 			<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
 			<button type="submit" class="button button-primary">Filter</button>
 			<?php if ($start_date !== '' || $end_date !== '') { ?>
-				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=bar-featured-clicks')); ?>">Reset</a>
+				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=sipn-stats')); ?>">Reset</a>
 			<?php } ?>
 			<a class="button" href="<?php echo esc_url($export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
 		</form>
@@ -10595,6 +10660,18 @@ function bar_render_buynow_clicks_report()
 	global $wpdb;
 	$table_name = $wpdb->prefix . 'event_tracking';
 
+	// Date-range filter.
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+
+	$where = "event_type = 'buy_now'";
+	if ($start_date !== '') {
+		$where .= $wpdb->prepare(' AND created_at >= %s', $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$where .= $wpdb->prepare(' AND created_at <= %s', $end_date . ' 23:59:59');
+	}
+
 	// Aggregate buy_now clicks per UPC, split web vs app/other.
 	$rows = $wpdb->get_results(
 		"SELECT
@@ -10602,9 +10679,9 @@ function bar_render_buynow_clicks_report()
 			SUM(click_hit) AS total,
 			SUM(CASE WHEN device_type = 'web' THEN click_hit ELSE 0 END) AS web,
 			SUM(CASE WHEN device_type <> 'web' THEN click_hit ELSE 0 END) AS app,
-			MAX(updated_at) AS last_click
+			MAX(created_at) AS last_click
 		 FROM $table_name
-		 WHERE event_type = 'buy_now'
+		 WHERE $where
 		 GROUP BY upc
 		 ORDER BY total DESC"
 	);
@@ -10650,12 +10727,33 @@ function bar_render_buynow_clicks_report()
 	?>
 	<div class="wrap">
 		<h1>Buy Now Clicks</h1>
+
+		<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+			<input type="hidden" name="page" value="bar-buynow-clicks" />
+			<?php if ($featured_only) { ?>
+				<input type="hidden" name="featured" value="1" />
+			<?php } ?>
+			<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
+			<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
+			<button type="submit" class="button button-primary">Filter</button>
+			<?php if ($start_date !== '' || $end_date !== '') { ?>
+				<a class="button" href="<?php echo esc_url(add_query_arg(array('page' => 'bar-buynow-clicks', 'featured' => $featured_only ? '1' : false), admin_url('admin.php'))); ?>">Reset</a>
+			<?php } ?>
+		</form>
+
+		<?php if ($start_date !== '' || $end_date !== '') { ?>
+			<p class="description">Showing
+				<?php echo $start_date !== '' ? 'from ' . esc_html($start_date) : 'up to'; ?>
+				<?php echo $end_date !== '' ? ' to ' . esc_html($end_date) : ($start_date !== '' ? ' onward' : 'all dates'); ?>.
+			</p>
+		<?php } ?>
+
 		<ul class="subsubsub">
 			<li>
-				<a href="<?php echo esc_url($base_url); ?>" class="<?php echo $featured_only ? '' : 'current'; ?>">All products</a> |
+				<a href="<?php echo esc_url(add_query_arg(array('start_date' => $start_date ?: false, 'end_date' => $end_date ?: false), $base_url)); ?>" class="<?php echo $featured_only ? '' : 'current'; ?>">All products</a> |
 			</li>
 			<li>
-				<a href="<?php echo esc_url(add_query_arg('featured', '1', $base_url)); ?>" class="<?php echo $featured_only ? 'current' : ''; ?>">Featured only</a>
+				<a href="<?php echo esc_url(add_query_arg(array('featured' => '1', 'start_date' => $start_date ?: false, 'end_date' => $end_date ?: false), $base_url)); ?>" class="<?php echo $featured_only ? 'current' : ''; ?>">Featured only</a>
 			</li>
 		</ul>
 		<p>
@@ -10849,15 +10947,10 @@ add_action('rest_api_init', function () {
  */
 function bar_push_stats_admin_menu()
 {
-	add_menu_page(
-		'Push Notifications',          // page title
-		'Push Notifications Stats',          // menu title
-		'manage_options',              // capability
-		'bar-push-stats',              // slug
-		'bar_render_push_stats_report',// callback
-		'dashicons-bell',              // icon
-		57                             // position
-	);
+	// Push Notifications is now registered as a submenu of the unified "Stats"
+	// menu (see bar_featured_clicks_admin_menu). Intentionally left empty so we
+	// don't create a duplicate top-level menu. The render callback
+	// bar_render_push_stats_report() is still used by that submenu.
 }
 add_action('admin_menu', 'bar_push_stats_admin_menu');
 
@@ -11849,15 +11942,10 @@ add_action('rest_api_init', function () {
  * "Featured Clicks" menu. Registered on a later priority so the parent
  * menu (priority 10) already exists.
  */
+// Featured Views is now registered as a submenu of the unified "Stats" menu
+// (see bar_featured_clicks_admin_menu). This hook is intentionally left as a
+// no-op to avoid a duplicate submenu entry.
 add_action('admin_menu', function () {
-	add_submenu_page(
-		'bar-featured-clicks',
-		'Featured Views',
-		'Featured Views',
-		'manage_options',
-		'bar-featured-views',
-		'bar_render_featured_views_report'
-	);
 }, 11);
 
 /**
@@ -11920,12 +12008,12 @@ function bar_render_featured_views_report()
 		<h1>Featured Product Views</h1>
 
 		<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-			<input type="hidden" name="page" value="bar-featured-views" />
+			<input type="hidden" name="page" value="sipn-stats" />
 			<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
 			<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
 			<button type="submit" class="button button-primary">Filter</button>
 			<?php if ($start_date !== '' || $end_date !== '') { ?>
-				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=bar-featured-views')); ?>">Reset</a>
+				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=sipn-stats')); ?>">Reset</a>
 			<?php } ?>
 			<a class="button" href="<?php echo esc_url($export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
 		</form>
@@ -12063,6 +12151,795 @@ function bar_ajax_export_featured_views()
 		echo '<td>' . (int) $row['web'] . '</td>';
 		echo '<td>' . (int) $row['app'] . '</td>';
 		echo '<td>' . esc_html($row['last_view']) . '</td>';
+		echo '</tr>';
+	}
+	echo '</table></body></html>';
+	exit;
+}
+
+/**
+ * STATS: Sponsored Ads
+ * Reports on impressions, clicks, CTR, and actiontypes for sponsored ads
+ * using the wp_sponsored_ad_clicks table.
+ */
+function bar_render_sponsored_ads_report()
+{
+	if (!current_user_can('manage_options')) {
+		return;
+	}
+
+	global $wpdb;
+	$ads_table    = $wpdb->prefix . 'sponsored_ads';
+	$clicks_table = 'wp_sponsored_ad_clicks';
+
+	// Date-range filter.
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+	$spons_id   = isset($_GET['spons_id']) ? (int) $_GET['spons_id'] : 0;
+
+	$where = '1=1';
+	if ($start_date !== '') {
+		$where .= $wpdb->prepare(' AND created_at >= %s', $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$where .= $wpdb->prepare(' AND created_at <= %s', $end_date . ' 23:59:59');
+	}
+
+	$export_url = add_query_arg(array(
+		'action'     => 'bar_export_sponsored_ads',
+		'start_date' => $start_date,
+		'end_date'   => $end_date,
+		'spons_id'   => $spons_id ?: false,
+		'_wpnonce'   => wp_create_nonce('bar_export_sponsored_ads'),
+	), admin_url('admin-ajax.php'));
+
+	if ($spons_id > 0) {
+		// Drill-down View
+		$ad = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ads_table WHERE id = %d", $spons_id));
+		if (!$ad) {
+			echo '<div class="wrap"><div class="notice notice-error"><p>Sponsored Ad not found.</p></div></div>';
+			return;
+		}
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare("
+				SELECT
+					DATE(created_at) AS ActivityDate,
+					COALESCE(SUM(CASE WHEN actiontype = 'View' THEN 1 END), 0) AS ViewCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Like' THEN 1 END), 0) AS LikeCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Click' THEN 1 END), 0) AS ClickCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'BuyNow' THEN 1 END), 0) AS BuyNowCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Share' THEN 1 END), 0) AS ShareCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'ProductLink' THEN 1 END), 0) AS ProductLinkCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'UnLike' THEN 1 END), 0) AS UnLikeCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Comment' THEN 1 END), 0) AS CommentCount
+				FROM $clicks_table
+				WHERE spons_id = %d
+				AND $where
+				GROUP BY DATE(created_at)
+				ORDER BY ActivityDate DESC
+			", $spons_id)
+		);
+
+		// Calculate grand totals for this specific ad
+		$grand_totals = $wpdb->get_row(
+			$wpdb->prepare("
+				SELECT
+					COALESCE(SUM(CASE WHEN actiontype = 'View' THEN 1 END), 0) AS ViewCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Like' THEN 1 END), 0) AS LikeCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Click' THEN 1 END), 0) AS ClickCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'BuyNow' THEN 1 END), 0) AS BuyNowCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Share' THEN 1 END), 0) AS ShareCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'ProductLink' THEN 1 END), 0) AS ProductLinkCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'UnLike' THEN 1 END), 0) AS UnLikeCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Comment' THEN 1 END), 0) AS CommentCount
+				FROM $clicks_table
+				WHERE spons_id = %d
+				AND $where
+			", $spons_id)
+		);
+		?>
+		<div class="wrap">
+			<h1>Sponsored Ad Daily Statistics: <?php echo esc_html($ad->company_name); ?></h1>
+			<p><a href="<?php echo esc_url(admin_url('admin.php?page=bar-sponsored-ads')); ?>" class="button">&larr; Back to All Ads</a></p>
+
+			<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+				<input type="hidden" name="page" value="bar-sponsored-ads" />
+				<input type="hidden" name="spons_id" value="<?php echo (int) $spons_id; ?>" />
+				<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
+				<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
+				<button type="submit" class="button button-primary">Filter</button>
+				<?php if ($start_date !== '' || $end_date !== '') { ?>
+					<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=bar-sponsored-ads&spons_id=' . $spons_id)); ?>">Reset</a>
+				<?php } ?>
+				<a class="button" href="<?php echo esc_url($export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
+			</form>
+
+			<?php if ($start_date !== '' || $end_date !== '') { ?>
+				<p class="description">Showing
+					<?php echo $start_date !== '' ? 'from ' . esc_html($start_date) : 'up to'; ?>
+					<?php echo $end_date !== '' ? ' to ' . esc_html($end_date) : ($start_date !== '' ? ' onward' : 'all dates'); ?>.
+				</p>
+			<?php } ?>
+
+			<div style="margin: 15px 0; background: #fff; border: 1px solid #ccd0d4; padding: 15px; border-radius: 4px; display: flex; gap: 20px; align-items: center;">
+				<?php if (!empty($ad->company_logo)) { ?>
+					<img src="<?php echo esc_url($ad->company_logo); ?>" style="max-height:60px; max-width: 120px;" />
+				<?php } ?>
+				<div>
+					<strong>Company:</strong> <?php echo esc_html($ad->company_name); ?><br>
+					<strong>Status:</strong> <?php echo (int) $ad->status === 0 ? '<span style="color:#1a7f37;">Active</span>' : '<span style="color:#8c8f94;">Inactive</span>'; ?><br>
+					<strong>End Date:</strong> <?php echo !empty($ad->end_date) ? esc_html(date('M j, Y', strtotime($ad->end_date))) : 'No End Date'; ?>
+				</div>
+			</div>
+
+			<p>
+				<strong>Total Views:</strong> <?php echo (int) $grand_totals->ViewCount; ?>
+				&nbsp;|&nbsp; <strong>Total Clicks:</strong> <?php echo (int) $grand_totals->ClickCount; ?>
+				&nbsp;|&nbsp; <strong>Buy Now:</strong> <?php echo (int) $grand_totals->BuyNowCount; ?>
+				&nbsp;|&nbsp; <strong>Likes:</strong> <?php echo (int) $grand_totals->LikeCount; ?>
+				&nbsp;|&nbsp; <strong>Comments:</strong> <?php echo (int) $grand_totals->CommentCount; ?>
+			</p>
+
+			<table class="wp-list-table widefat fixed striped">
+				<thead>
+					<tr>
+						<th>Date</th>
+						<th>Views</th>
+						<th>Clicks</th>
+						<th>Buy Now</th>
+						<th>Likes</th>
+						<th>Comments</th>
+						<th>Shares</th>
+						<th>Product Links</th>
+						<th>Unlikes</th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php if (empty($rows)) { ?>
+						<tr><td colspan="9">No stats recorded for this ad in the selected date range.</td></tr>
+					<?php } else {
+						foreach ($rows as $row) { ?>
+							<tr>
+								<td><strong><?php echo esc_html($row->ActivityDate); ?></strong></td>
+								<td><?php echo (int) $row->ViewCount; ?></td>
+								<td><?php echo (int) $row->ClickCount; ?></td>
+								<td><?php echo (int) $row->BuyNowCount; ?></td>
+								<td><?php echo (int) $row->LikeCount; ?></td>
+								<td><?php echo (int) $row->CommentCount; ?></td>
+								<td><?php echo (int) $row->ShareCount; ?></td>
+								<td><?php echo (int) $row->ProductLinkCount; ?></td>
+								<td><?php echo (int) $row->UnLikeCount; ?></td>
+							</tr>
+						<?php }
+					} ?>
+				</tbody>
+			</table>
+		</div>
+		<?php
+	} else {
+		// Overview of All Ads
+		$ads = $wpdb->get_results("SELECT * FROM $ads_table ORDER BY id DESC");
+
+		// Get aggregate stats for all ads
+		$stats_rows = $wpdb->get_results("
+			SELECT
+				spons_id,
+				COALESCE(SUM(CASE WHEN actiontype = 'View' THEN 1 END), 0) AS ViewCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'Like' THEN 1 END), 0) AS LikeCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'Click' THEN 1 END), 0) AS ClickCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'BuyNow' THEN 1 END), 0) AS BuyNowCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'Share' THEN 1 END), 0) AS ShareCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'ProductLink' THEN 1 END), 0) AS ProductLinkCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'UnLike' THEN 1 END), 0) AS UnLikeCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'Comment' THEN 1 END), 0) AS CommentCount
+			FROM $clicks_table
+			WHERE $where
+			GROUP BY spons_id
+		");
+
+		$stats_by_ad = array();
+		foreach ($stats_rows as $row) {
+			$stats_by_ad[$row->spons_id] = $row;
+		}
+		?>
+		<div class="wrap">
+			<h1>Sponsored Ads Stats</h1>
+
+			<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+				<input type="hidden" name="page" value="bar-sponsored-ads" />
+				<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
+				<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
+				<button type="submit" class="button button-primary">Filter</button>
+				<?php if ($start_date !== '' || $end_date !== '') { ?>
+					<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=bar-sponsored-ads')); ?>">Reset</a>
+				<?php } ?>
+				<a class="button" href="<?php echo esc_url($export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
+			</form>
+
+			<?php if ($start_date !== '' || $end_date !== '') { ?>
+				<p class="description">Showing
+					<?php echo $start_date !== '' ? 'from ' . esc_html($start_date) : 'up to'; ?>
+					<?php echo $end_date !== '' ? ' to ' . esc_html($end_date) : ($start_date !== '' ? ' onward' : 'all dates'); ?>.
+				</p>
+			<?php } ?>
+
+			<table class="wp-list-table widefat fixed striped">
+				<thead>
+					<tr>
+						<th style="width: 50px;">ID</th>
+						<th>Ad Banner</th>
+						<th>Company Name</th>
+						<th>Views</th>
+						<th>Clicks</th>
+						<th>Buy Now</th>
+						<th>Likes</th>
+						<th>Comments</th>
+						<th>CTR</th>
+						<th>Actions</th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php if (empty($ads)) { ?>
+						<tr><td colspan="10">No sponsored ads found.</td></tr>
+					<?php } else {
+						foreach ($ads as $ad) {
+							$ad_stats = isset($stats_by_ad[$ad->id]) ? $stats_by_ad[$ad->id] : null;
+							$views = $ad_stats ? (int) $ad_stats->ViewCount : 0;
+							$clicks = $ad_stats ? (int) $ad_stats->ClickCount : 0;
+							$buynow = $ad_stats ? (int) $ad_stats->BuyNowCount : 0;
+							$likes = $ad_stats ? (int) $ad_stats->LikeCount : 0;
+							$comments = $ad_stats ? (int) $ad_stats->CommentCount : 0;
+							$ctr = $views > 0 ? round(($clicks / $views) * 100, 1) . '%' : '&mdash;';
+							
+							$drill_url = admin_url('admin.php?page=bar-sponsored-ads&spons_id=' . (int) $ad->id);
+							if ($start_date !== '') {
+								$drill_url = add_query_arg('start_date', $start_date, $drill_url);
+							}
+							if ($end_date !== '') {
+								$drill_url = add_query_arg('end_date', $end_date, $drill_url);
+							}
+							?>
+							<tr>
+								<td><?php echo (int) $ad->id; ?></td>
+								<td>
+									<?php if (!empty($ad->image)) { ?>
+										<img src="<?php echo esc_url($ad->image); ?>" style="max-height: 40px; max-width: 80px;" />
+									<?php } else {
+										echo '&mdash;';
+									} ?>
+								</td>
+								<td><strong><?php echo esc_html($ad->company_name); ?></strong></td>
+								<td><?php echo $views; ?></td>
+								<td><?php echo $clicks; ?></td>
+								<td><?php echo $buynow; ?></td>
+								<td><?php echo $likes; ?></td>
+								<td><?php echo $comments; ?></td>
+								<td><strong><?php echo $ctr; ?></strong></td>
+								<td>
+									<a href="<?php echo esc_url($drill_url); ?>" class="button button-small">View Daily Stats</a>
+								</td>
+							</tr>
+						<?php }
+					} ?>
+				</tbody>
+			</table>
+		</div>
+		<?php
+	}
+}
+
+/**
+ * AJAX handler: exports Sponsored Ads stats as an Excel-compatible file.
+ */
+add_action('wp_ajax_bar_export_sponsored_ads', 'bar_ajax_export_sponsored_ads');
+function bar_ajax_export_sponsored_ads()
+{
+	if (!current_user_can('manage_options')) {
+		wp_die('Unauthorized');
+	}
+	check_admin_referer('bar_export_sponsored_ads');
+
+	global $wpdb;
+	$ads_table    = $wpdb->prefix . 'sponsored_ads';
+	$clicks_table = 'wp_sponsored_ad_clicks';
+
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+	$spons_id   = isset($_GET['spons_id']) ? (int) $_GET['spons_id'] : 0;
+
+	$where = '1=1';
+	if ($start_date !== '') {
+		$where .= $wpdb->prepare(' AND created_at >= %s', $start_date . ' 00:00:00');
+	}
+	if ($end_date !== '') {
+		$where .= $wpdb->prepare(' AND created_at <= %s', $end_date . ' 23:59:59');
+	}
+
+	if ($spons_id > 0) {
+		$ad = $wpdb->get_row($wpdb->prepare("SELECT * FROM $ads_table WHERE id = %d", $spons_id));
+		$ad_name = $ad ? sanitize_title($ad->company_name) : 'ad-' . $spons_id;
+		$filename = 'sponsored-ad-' . $ad_name . ($start_date ? '-' . $start_date : '') . ($end_date ? '-to-' . $end_date : '') . '.xls';
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare("
+				SELECT
+					DATE(created_at) AS ActivityDate,
+					COALESCE(SUM(CASE WHEN actiontype = 'View' THEN 1 END), 0) AS ViewCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Like' THEN 1 END), 0) AS LikeCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Click' THEN 1 END), 0) AS ClickCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'BuyNow' THEN 1 END), 0) AS BuyNowCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Share' THEN 1 END), 0) AS ShareCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'ProductLink' THEN 1 END), 0) AS ProductLinkCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'UnLike' THEN 1 END), 0) AS UnLikeCount,
+					COALESCE(SUM(CASE WHEN actiontype = 'Comment' THEN 1 END), 0) AS CommentCount
+				FROM $clicks_table
+				WHERE spons_id = %d
+				AND $where
+				GROUP BY DATE(created_at)
+				ORDER BY ActivityDate DESC
+			", $spons_id)
+		);
+
+		header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+		header('Content-Disposition: attachment; filename="' . $filename . '"');
+		header('Pragma: no-cache');
+		header('Expires: 0');
+
+		echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+		echo '<head><meta charset="UTF-8"><style>td{mso-number-format:"\@";}</style></head><body>';
+		echo '<h2>' . esc_html($ad ? $ad->company_name : 'Sponsored Ad') . ' Daily Stats</h2>';
+		echo '<table border="1">';
+		echo '<tr><th>Date</th><th>Views</th><th>Clicks</th><th>Buy Now</th><th>Likes</th><th>Comments</th><th>Shares</th><th>Product Links</th><th>Unlikes</th></tr>';
+		foreach ($rows as $row) {
+			echo '<tr>';
+			echo '<td>' . esc_html($row->ActivityDate) . '</td>';
+			echo '<td>' . (int) $row->ViewCount . '</td>';
+			echo '<td>' . (int) $row->ClickCount . '</td>';
+			echo '<td>' . (int) $row->BuyNowCount . '</td>';
+			echo '<td>' . (int) $row->LikeCount . '</td>';
+			echo '<td>' . (int) $row->CommentCount . '</td>';
+			echo '<td>' . (int) $row->ShareCount . '</td>';
+			echo '<td>' . (int) $row->ProductLinkCount . '</td>';
+			echo '<td>' . (int) $row->UnLikeCount . '</td>';
+			echo '</tr>';
+		}
+		echo '</table></body></html>';
+	} else {
+		$filename = 'sponsored-ads-overview' . ($start_date ? '-' . $start_date : '') . ($end_date ? '-to-' . $end_date : '') . '.xls';
+
+		$ads = $wpdb->get_results("SELECT * FROM $ads_table ORDER BY id DESC");
+		$stats_rows = $wpdb->get_results("
+			SELECT
+				spons_id,
+				COALESCE(SUM(CASE WHEN actiontype = 'View' THEN 1 END), 0) AS ViewCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'Like' THEN 1 END), 0) AS LikeCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'Click' THEN 1 END), 0) AS ClickCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'BuyNow' THEN 1 END), 0) AS BuyNowCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'Share' THEN 1 END), 0) AS ShareCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'ProductLink' THEN 1 END), 0) AS ProductLinkCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'UnLike' THEN 1 END), 0) AS UnLikeCount,
+				COALESCE(SUM(CASE WHEN actiontype = 'Comment' THEN 1 END), 0) AS CommentCount
+			FROM $clicks_table
+			WHERE $where
+			GROUP BY spons_id
+		");
+
+		$stats_by_ad = array();
+		foreach ($stats_rows as $row) {
+			$stats_by_ad[$row->spons_id] = $row;
+		}
+
+		header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+		header('Content-Disposition: attachment; filename="' . $filename . '"');
+		header('Pragma: no-cache');
+		header('Expires: 0');
+
+		echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+		echo '<head><meta charset="UTF-8"><style>td{mso-number-format:"\@";}</style></head><body>';
+		echo '<h2>Sponsored Ads Overview Stats</h2>';
+		echo '<table border="1">';
+		echo '<tr><th>ID</th><th>Company Name</th><th>Views</th><th>Clicks</th><th>Buy Now</th><th>Likes</th><th>Comments</th><th>CTR</th></tr>';
+		foreach ($ads as $ad) {
+			$ad_stats = isset($stats_by_ad[$ad->id]) ? $stats_by_ad[$ad->id] : null;
+			$views = $ad_stats ? (int) $ad_stats->ViewCount : 0;
+			$clicks = $ad_stats ? (int) $ad_stats->ClickCount : 0;
+			$buynow = $ad_stats ? (int) $ad_stats->BuyNowCount : 0;
+			$likes = $ad_stats ? (int) $ad_stats->LikeCount : 0;
+			$comments = $ad_stats ? (int) $ad_stats->CommentCount : 0;
+			$ctr = $views > 0 ? round(($clicks / $views) * 100, 1) . '%' : '0%';
+
+			echo '<tr>';
+			echo '<td>' . (int) $ad->id . '</td>';
+			echo '<td>' . esc_html($ad->company_name) . '</td>';
+			echo '<td>' . $views . '</td>';
+			echo '<td>' . $clicks . '</td>';
+			echo '<td>' . $buynow . '</td>';
+			echo '<td>' . $likes . '</td>';
+			echo '<td>' . $comments . '</td>';
+			echo '<td>' . esc_html($ctr) . '</td>';
+			echo '</tr>';
+		}
+		echo '</table></body></html>';
+	}
+	exit;
+}
+
+/* =====================================================================
+ * STATS: Verified Users
+ * Daily verified vs non-verified user counts by registration date.
+ * Convention (see bar.php): wp_users.validate_email = 0 means the email
+ * has been verified; validate_email = 1 means not yet verified.
+ * ===================================================================== */
+
+/**
+ * Resolve the requested date range for the new stat pages.
+ * Defaults to the last 30 days (inclusive) when no filter is supplied,
+ * so the heavier engagement query never runs unbounded.
+ *
+ * @return array [ $start_date, $end_date ] as YYYY-MM-DD strings.
+ */
+function bar_stats_date_range()
+{
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+
+	if ($start_date === '' && $end_date === '') {
+		$end_date   = date('Y-m-d');
+		$start_date = date('Y-m-d', strtotime('-29 days'));
+	} elseif ($start_date === '') {
+		$start_date = $end_date;
+	} elseif ($end_date === '') {
+		$end_date = $start_date;
+	}
+
+	// Guard against reversed range.
+	if (strtotime($start_date) > strtotime($end_date)) {
+		$tmp = $start_date;
+		$start_date = $end_date;
+		$end_date = $tmp;
+	}
+
+	return array($start_date, $end_date);
+}
+
+/**
+ * Daily verified/non-verified counts for the given range, gaps filled with 0.
+ *
+ * @return array List of objects: { registration_date, verified, non_verified }.
+ */
+function bar_get_verified_users_rows($start_date, $end_date)
+{
+	global $wpdb;
+
+	$grouped = $wpdb->get_results(
+		$wpdb->prepare(
+			"SELECT DATE(user_registered) AS d,
+				SUM(CASE WHEN validate_email = 0 THEN 1 ELSE 0 END) AS verified,
+				SUM(CASE WHEN validate_email = 1 THEN 1 ELSE 0 END) AS non_verified
+			 FROM {$wpdb->users}
+			 WHERE user_registered BETWEEN %s AND %s
+			 GROUP BY DATE(user_registered)",
+			$start_date . ' 00:00:00',
+			$end_date . ' 23:59:59'
+		),
+		OBJECT_K
+	);
+
+	$rows = array();
+	$cursor = strtotime($start_date);
+	$last   = strtotime($end_date);
+	while ($cursor <= $last) {
+		$day = date('Y-m-d', $cursor);
+		$rows[] = (object) array(
+			'registration_date' => $day,
+			'verified'          => isset($grouped[$day]) ? (int) $grouped[$day]->verified : 0,
+			'non_verified'      => isset($grouped[$day]) ? (int) $grouped[$day]->non_verified : 0,
+		);
+		$cursor = strtotime('+1 day', $cursor);
+	}
+
+	return $rows;
+}
+
+/**
+ * Renders the Verified Users report.
+ */
+function bar_render_verified_users_report()
+{
+	if (!current_user_can('manage_options')) {
+		return;
+	}
+
+	list($start_date, $end_date) = bar_stats_date_range();
+	$rows = bar_get_verified_users_rows($start_date, $end_date);
+
+	$total_verified = 0;
+	$total_non = 0;
+	foreach ($rows as $row) {
+		$total_verified += $row->verified;
+		$total_non      += $row->non_verified;
+	}
+	$total_all = $total_verified + $total_non;
+
+	$export_url = add_query_arg(array(
+		'action'     => 'bar_export_verified_users',
+		'start_date' => $start_date,
+		'end_date'   => $end_date,
+		'_wpnonce'   => wp_create_nonce('bar_export_verified_users'),
+	), admin_url('admin-ajax.php'));
+	?>
+	<div class="wrap">
+		<h1>Verified Users</h1>
+
+		<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+			<input type="hidden" name="page" value="bar-verified-users" />
+			<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
+			<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
+			<button type="submit" class="button button-primary">Filter</button>
+			<a class="button" href="<?php echo esc_url($export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
+		</form>
+
+		<p class="description">Showing registrations from <?php echo esc_html($start_date); ?> to <?php echo esc_html($end_date); ?>.</p>
+
+		<p>
+			<strong>Total registrations:</strong> <?php echo (int) $total_all; ?>
+			&nbsp;|&nbsp; <strong>Verified:</strong> <?php echo (int) $total_verified; ?>
+			&nbsp;|&nbsp; <strong>Not verified:</strong> <?php echo (int) $total_non; ?>
+		</p>
+
+		<table class="wp-list-table widefat fixed striped">
+			<thead>
+				<tr>
+					<th>Registration Date</th>
+					<th>Verified Users</th>
+					<th>Non-Verified Users</th>
+					<th>Total</th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php if (empty($rows)) { ?>
+					<tr><td colspan="4">No data for this range.</td></tr>
+				<?php } else {
+					foreach ($rows as $row) {
+						$day_total = $row->verified + $row->non_verified;
+						?>
+						<tr>
+							<td><?php echo esc_html($row->registration_date); ?></td>
+							<td><?php echo (int) $row->verified; ?></td>
+							<td><?php echo (int) $row->non_verified; ?></td>
+							<td><?php echo (int) $day_total; ?></td>
+						</tr>
+					<?php }
+				} ?>
+			</tbody>
+		</table>
+	</div>
+	<?php
+}
+
+/**
+ * Excel export for the Verified Users report.
+ */
+add_action('wp_ajax_bar_export_verified_users', 'bar_ajax_export_verified_users');
+function bar_ajax_export_verified_users()
+{
+	if (!current_user_can('manage_options')) {
+		wp_die('Unauthorized');
+	}
+	check_admin_referer('bar_export_verified_users');
+
+	list($start_date, $end_date) = bar_stats_date_range();
+	$rows = bar_get_verified_users_rows($start_date, $end_date);
+
+	$filename = 'verified-users-' . $start_date . '-to-' . $end_date . '.xls';
+
+	header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+	header('Content-Disposition: attachment; filename="' . $filename . '"');
+	header('Pragma: no-cache');
+	header('Expires: 0');
+
+	echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+	echo '<head><meta charset="UTF-8"><style>td{mso-number-format:"\@";}</style></head><body>';
+	echo '<table border="1">';
+	echo '<tr><th>Registration Date</th><th>Verified Users</th><th>Non-Verified Users</th><th>Total</th></tr>';
+	foreach ($rows as $row) {
+		echo '<tr>';
+		echo '<td>' . esc_html($row->registration_date) . '</td>';
+		echo '<td>' . (int) $row->verified . '</td>';
+		echo '<td>' . (int) $row->non_verified . '</td>';
+		echo '<td>' . (int) ($row->verified + $row->non_verified) . '</td>';
+		echo '</tr>';
+	}
+	echo '</table></body></html>';
+	exit;
+}
+
+/* =====================================================================
+ * STATS: User Engagement
+ * Per-user posts, comments (wp_comments + bbPress replies) and likes
+ * within the selected date range.
+ * ===================================================================== */
+
+/**
+ * Per-user engagement rows for the given range.
+ *
+ * @return array List of associative rows:
+ *               { user_id, user_email, total_posts, total_comments, total_likes }.
+ */
+function bar_get_user_engagement_rows($start_date, $end_date)
+{
+	global $wpdb;
+
+	$start = $start_date . ' 00:00:00';
+	$end   = $end_date . ' 23:59:59';
+
+	$sql = $wpdb->prepare(
+		"SELECT
+			u.ID AS user_id,
+			u.user_email,
+			COUNT(DISTINCT p.ID) AS total_posts,
+			COALESCE(MAX(c.comment_count), 0) + COALESCE(MAX(bbp_replies.reply_count), 0) AS total_comments,
+			COALESCE(MAX(rl.like_count), 0) AS total_likes
+		 FROM {$wpdb->users} u
+		 LEFT JOIN {$wpdb->posts} p
+			ON p.post_author = u.ID
+			AND p.post_status = 'publish'
+			AND p.post_type = 'reply'
+			AND p.post_date BETWEEN %s AND %s
+			AND p.ID NOT IN (
+				SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_bbp_reply_to'
+			)
+		 LEFT JOIN (
+			SELECT user_id, COUNT(*) AS comment_count
+			FROM {$wpdb->comments}
+			WHERE comment_approved = 1
+			AND comment_date BETWEEN %s AND %s
+			GROUP BY user_id
+		 ) c ON c.user_id = u.ID
+		 LEFT JOIN (
+			SELECT post_author, COUNT(*) AS reply_count
+			FROM {$wpdb->posts}
+			WHERE post_type = 'reply'
+			AND post_status = 'publish'
+			AND post_date BETWEEN %s AND %s
+			GROUP BY post_author
+		 ) bbp_replies ON bbp_replies.post_author = u.ID
+		 LEFT JOIN (
+			SELECT user_id, COUNT(*) AS like_count
+			FROM wp_reply_likes
+			WHERE status = '0'
+			AND created BETWEEN %s AND %s
+			GROUP BY user_id
+		 ) rl ON rl.user_id = u.ID
+		 WHERE u.ID != 5414
+		 AND (
+			p.ID IS NOT NULL
+			OR COALESCE(c.comment_count, 0) > 0
+			OR COALESCE(bbp_replies.reply_count, 0) > 0
+			OR COALESCE(rl.like_count, 0) > 0
+		 )
+		 GROUP BY u.ID, u.user_email
+		 ORDER BY total_posts DESC, total_comments DESC, total_likes DESC",
+		$start, $end,
+		$start, $end,
+		$start, $end,
+		$start, $end
+	);
+
+	return $wpdb->get_results($sql, ARRAY_A);
+}
+
+/**
+ * Renders the User Engagement report.
+ */
+function bar_render_user_engagement_report()
+{
+	if (!current_user_can('manage_options')) {
+		return;
+	}
+
+	list($start_date, $end_date) = bar_stats_date_range();
+	$rows = bar_get_user_engagement_rows($start_date, $end_date);
+
+	$total_posts = 0;
+	$total_comments = 0;
+	$total_likes = 0;
+	foreach ($rows as $row) {
+		$total_posts    += (int) $row['total_posts'];
+		$total_comments += (int) $row['total_comments'];
+		$total_likes    += (int) $row['total_likes'];
+	}
+
+	$export_url = add_query_arg(array(
+		'action'     => 'bar_export_user_engagement',
+		'start_date' => $start_date,
+		'end_date'   => $end_date,
+		'_wpnonce'   => wp_create_nonce('bar_export_user_engagement'),
+	), admin_url('admin-ajax.php'));
+	?>
+	<div class="wrap">
+		<h1>User Engagement</h1>
+
+		<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+			<input type="hidden" name="page" value="bar-user-engagement" />
+			<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
+			<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
+			<button type="submit" class="button button-primary">Filter</button>
+			<a class="button" href="<?php echo esc_url($export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
+		</form>
+
+		<p class="description">Showing activity from <?php echo esc_html($start_date); ?> to <?php echo esc_html($end_date); ?>.</p>
+
+		<p>
+			<strong>Active users:</strong> <?php echo (int) count($rows); ?>
+			&nbsp;|&nbsp; <strong>Posts:</strong> <?php echo (int) $total_posts; ?>
+			&nbsp;|&nbsp; <strong>Comments:</strong> <?php echo (int) $total_comments; ?>
+			&nbsp;|&nbsp; <strong>Likes:</strong> <?php echo (int) $total_likes; ?>
+		</p>
+
+		<table class="wp-list-table widefat fixed striped">
+			<thead>
+				<tr>
+					<th>User ID</th>
+					<th>Email</th>
+					<th>Posts</th>
+					<th>Comments</th>
+					<th>Likes</th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php if (empty($rows)) { ?>
+					<tr><td colspan="5">No activity for this range.</td></tr>
+				<?php } else {
+					foreach ($rows as $row) { ?>
+						<tr>
+							<td><?php echo (int) $row['user_id']; ?></td>
+							<td><?php echo esc_html($row['user_email']); ?></td>
+							<td><?php echo (int) $row['total_posts']; ?></td>
+							<td><?php echo (int) $row['total_comments']; ?></td>
+							<td><?php echo (int) $row['total_likes']; ?></td>
+						</tr>
+					<?php }
+				} ?>
+			</tbody>
+		</table>
+	</div>
+	<?php
+}
+
+/**
+ * Excel export for the User Engagement report.
+ */
+add_action('wp_ajax_bar_export_user_engagement', 'bar_ajax_export_user_engagement');
+function bar_ajax_export_user_engagement()
+{
+	if (!current_user_can('manage_options')) {
+		wp_die('Unauthorized');
+	}
+	check_admin_referer('bar_export_user_engagement');
+
+	list($start_date, $end_date) = bar_stats_date_range();
+	$rows = bar_get_user_engagement_rows($start_date, $end_date);
+
+	$filename = 'user-engagement-' . $start_date . '-to-' . $end_date . '.xls';
+
+	header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+	header('Content-Disposition: attachment; filename="' . $filename . '"');
+	header('Pragma: no-cache');
+	header('Expires: 0');
+
+	echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+	echo '<head><meta charset="UTF-8"><style>td{mso-number-format:"\@";}</style></head><body>';
+	echo '<table border="1">';
+	echo '<tr><th>User ID</th><th>Email</th><th>Posts</th><th>Comments</th><th>Likes</th></tr>';
+	foreach ($rows as $row) {
+		echo '<tr>';
+		echo '<td>' . (int) $row['user_id'] . '</td>';
+		echo '<td>' . esc_html($row['user_email']) . '</td>';
+		echo '<td>' . (int) $row['total_posts'] . '</td>';
+		echo '<td>' . (int) $row['total_comments'] . '</td>';
+		echo '<td>' . (int) $row['total_likes'] . '</td>';
 		echo '</tr>';
 	}
 	echo '</table></body></html>';
