@@ -926,7 +926,7 @@ if (is_user_logged_in()) {
            data-from="website"
            data-rtype="1"
            data-pupc="<?php echo esc_attr($spons_buy_upc); ?>">
-            <button class="search">Buy Now</button>
+            <button class="search"><?php echo !empty($spons['buynow_text']) ? esc_html($spons['buynow_text']) : 'Buy Now'; ?></button>
         </a>
     <?php } ?>
 </div>

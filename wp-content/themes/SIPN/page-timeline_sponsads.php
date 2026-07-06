@@ -121,6 +121,7 @@ function get_timeline_post($post_id)
         $all_topics['sponsored_ads'][$k]['product_title'] = $product_title;
         $all_topics['sponsored_ads'][$k]['product_image'] = $product_image;
         $all_topics['sponsored_ads'][$k]['replies'] = $spons_replies;
+        $all_topics['sponsored_ads'][$k]['buynow_text'] = $not->ad_type;
         $k++;
     }
     return $all_topics;
@@ -320,9 +321,9 @@ function get_timeline_post($post_id)
                             <div class="options4 options">
                                 <?php if ($spons['product_title'] != '') { ?>
                                     <div><a href="<?php echo $spons['link']; ?>" target = "_blank"
-                                            class="buynow post-buynow recordaddclick" data-actiontype="BuyNow"
-                                            data-id="<?php echo $spons['spons_id']; ?>" data-from="website"><button
-                                                class="search">Buy Now</button></a></div>
+                                             class="buynow post-buynow recordaddclick" data-actiontype="BuyNow"
+                                             data-id="<?php echo $spons['spons_id']; ?>" data-from="website"><button
+                                                 class="search"><?php echo !empty($spons['buynow_text']) ? esc_html($spons['buynow_text']) : 'Buy Now'; ?></button></a></div>
                                 <?php } ?>
                             </div>
                         </div>

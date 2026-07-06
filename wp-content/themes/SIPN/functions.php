@@ -1625,7 +1625,8 @@
 				if ($uid != $cur_user->data->ID) {
 					$querystore = $wpdb->prepare("INSERT INTO `notification_table` (`notification_type`, `content`, `content_text`, `notification_by`, `notification_to`, `platform`, `comment_id`) VALUES (%s, %d, %s, %d, %d, %s, %d)", 'Comment', $prep, $content_text, $cur_user->data->ID, $uid, 'Commentfromwebsite', $new_reply_id);
 					$res = $wpdb->query($querystore);
-					$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Commentfromwebsite");
+					$noti_id = $wpdb->insert_id;
+					$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Commentfromwebsite", $noti_id);
 				}
 
 
@@ -2818,7 +2819,8 @@
 
 					$querystore = $wpdb->prepare("INSERT INTO `notification_table` (`notification_type`, `content`, `content_text`, `notification_by`, `notification_to`, `platform`) VALUES (%s, %d, %s, %d, %d, %s)", 'Like', $_POST['reply_id'], $content_text, $user_id, $uid, 'Likefromwebsite');
 					$res = $wpdb->query($querystore);
-					$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Likefromwebsite");
+					$noti_id = $wpdb->insert_id;
+					$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Likefromwebsite", $noti_id);
 				}
 				$query = $wpdb->prepare("SELECT count(*) as cnt FROM `wp_reply_likes` WHERE reply_id = '%d' and status ='0'", $_POST['reply_id']);
 				$list = $wpdb->get_results($query);
@@ -2908,7 +2910,8 @@
 				if ($user_id != $_POST['profile_id']) {
 					$querystore = $wpdb->prepare("INSERT INTO `notification_table` (`notification_type`, `content`, `content_text`, `notification_by`, `notification_to`, `platform`) VALUES (%s, %d, %s, %d, %d, %s)", 'Like', $_POST['profile_id'], $content_text, $user_id, $_POST['profile_id'], 'Barlikefromwebsite');
 					$res = $wpdb->query($querystore);
-					$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Barlikefromwebsite");
+					$noti_id = $wpdb->insert_id;
+					$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Barlikefromwebsite", $noti_id);
 				}
 
 				echo '1';

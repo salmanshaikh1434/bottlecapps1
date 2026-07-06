@@ -4387,6 +4387,7 @@ function get_timeline_list($page, $posts_per_page)
 		$all_topics['sponsored_ads'][$k]['product_image'] = $product_image;
 		$all_topics['sponsored_ads'][$k]['is_bar'] = $not->is_bar;
 		$all_topics['sponsored_ads'][$k]['replies'] = $spons_replies;
+		$all_topics['sponsored_ads'][$k]['buynow_text'] = $not->ad_type;
 
 
 
@@ -5156,7 +5157,8 @@ function handle_timeline_list(WP_REST_Request $request)
 		$all_topics['sponsored_ads'][$k]['product_rating'] = $product_rating;
 		$all_topics['sponsored_ads'][$k]['product_price'] = $product_price;
 		$all_topics['sponsored_ads'][$k]['replies'] = $spons_replies;
-		 $all_topics['sponsored_ads'][$k]['external_url'] = !empty($external_url) ? $external_url : $not->link;;
+		$all_topics['sponsored_ads'][$k]['external_url'] = !empty($external_url) ? $external_url : $not->link;
+		$all_topics['sponsored_ads'][$k]['buynow_text'] = $not->ad_type;
 		//$all_topics['sponsored_ads'][$k]['external_url'] = "https://arkaybeverages.com/product/arkay-version-of-alcohol-free-on-fire-whisky-flavoured-drink-best-seller-gluten-free-sugar-free-guilt-free-free-shipping/";
 
 		$k++;
@@ -5781,7 +5783,8 @@ function handle_timeline_addpost(WP_REST_Request $request)
 			if ($uid != $cur_user->data->ID) {
 				$querystore = $wpdb->prepare("INSERT INTO `notification_table` (`notification_type`, `content`, `content_text`, `notification_by`, `notification_to`, `platform`, `comment_id`) VALUES (%s, %d, %s, %d, %d, %s, %s)", 'Comment', $prep, $content_text, $cur_user->data->ID, $uid, 'Commentfromapp', $new_reply_id);
 				$res = $wpdb->query($querystore);
-				$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Commentfromapp");
+				$noti_id = $wpdb->insert_id;
+				$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Commentfromapp", $noti_id);
 			}
 			if ($attachment_id) {
 				add_post_meta($new_reply_id, '_thumbnail_id', $attachment_id);
@@ -6526,7 +6529,8 @@ function handle_reply_likes(WP_REST_Request $request)
 			if ($uid != $user_id) {
 				$querystore = $wpdb->prepare("INSERT INTO `notification_table` (`notification_type`, `content`, `content_text`, `notification_by`, `notification_to`, `platform`) VALUES (%s, %d, %s, %d, %d, %s)", 'Like', $item['reply_id'], $content_text, $user_id, $uid, 'Likefromapp');
 				$res = $wpdb->query($querystore);
-				$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Likefromapp");
+				$noti_id = $wpdb->insert_id;
+				$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Likefromapp", $noti_id);
 			}
 
 			$query = $wpdb->prepare("SELECT count(*) as cnt FROM `wp_reply_likes` WHERE reply_id = '%d' and status ='0'", $item['reply_id']);
@@ -6605,7 +6609,8 @@ function handle_reply_comment_likes(WP_REST_Request $request)
 			if ($uid != $user_id) {
 				$querystore = $wpdb->prepare("INSERT INTO `notification_table` (`notification_type`, `content`, `content_text`, `notification_by`, `notification_to`, `platform`) VALUES (%s, %d, %s, %d, %d, %s)", 'Like', $item['reply_id'], $content_text, $user_id, $uid, 'Likefromapp');
 				$res = $wpdb->query($querystore);
-				$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Likefromapp");
+				$noti_id = $wpdb->insert_id;
+				$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Likefromapp", $noti_id);
 			}
 
 			$query = $wpdb->prepare("SELECT count(*) as cnt FROM `wp_reply_likes` WHERE reply_id = '%d' and status ='0'", $item['reply_id']);
@@ -6914,8 +6919,9 @@ function handle_profile_likes(WP_REST_Request $request)
 			if ($user_id != $item['profile_id']) {
 				$querystore = $wpdb->prepare("INSERT INTO `notification_table` (`notification_type`, `content`, `content_text`, `notification_by`, `notification_to`, `platform`) VALUES (%s, %d, %s, %d, %d, %s)", 'Like', $item['profile_id'], $content_text, $user_id, $item['profile_id'], 'Barlikefromapp');
 				$res = $wpdb->query($querystore);
+				$noti_id = $wpdb->insert_id;
 
-				$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Barlikefromapp");
+				$result = $fcm->send_notification($andriod_device_ids, $arrNotification, "Barlikefromapp", $noti_id);
 			}
 			return array("message" => "Record updated successfully.", "is_liked" => $item['like'], "likes" => $list[0]->cnt); //added by sumeeth
 			//return array("message"=>"Record updated successfully.", "likes"=>$list[0]->cnt);
