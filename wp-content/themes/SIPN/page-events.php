@@ -49,8 +49,10 @@ if ( $query->have_posts() ) {
 		$post_id = get_the_ID();
 		$title   = get_the_title();
 
-		// Must contain the phrase "bourbon tasting" (case-insensitive)
-		if ( stripos( $title, 'bourbon tasting' ) === false ) {
+		// Show all bourbon events: title mentions "bourbon", OR the event was
+		// imported by the SIPN Bourbon Events plugin (Eventbrite sync).
+		$is_imported = (bool) get_post_meta( $post_id, '_sipn_be_source', true );
+		if ( ! $is_imported && stripos( $title, 'bourbon' ) === false ) {
 			continue;
 		}
 
@@ -119,18 +121,25 @@ if ( $query->have_posts() ) {
 			continue;
 		}
 
+		// Image: featured image if set, else the remote (Eventbrite) image URL.
+		$image = get_the_post_thumbnail_url( $post_id, 'full' );
+		if ( ! $image ) {
+			$image = get_post_meta( $post_id, '_sipn_be_image_url', true );
+		}
+
 		$tasting_events[] = [
-			'id'        => $post_id,
-			'title'     => $title,
-			'slug'      => get_post_field( 'post_name', $post_id ),
-			'image'     => get_the_post_thumbnail_url( $post_id, 'full' ),
-			'start'     => $start,
-			'end'       => $end,
-			'start_ts'  => $start_ts,
-			'venue'     => $venue,
-			'state'     => $state,
-			'price'     => $price,
-			'book'      => $book,
+			'id'          => $post_id,
+			'title'       => $title,
+			'slug'        => get_post_field( 'post_name', $post_id ),
+			'image'       => $image,
+			'start'       => $start,
+			'end'         => $end,
+			'start_ts'    => $start_ts,
+			'venue'       => $venue,
+			'state'       => $state,
+			'price'       => $price,
+			'book'        => $book,
+			'is_imported' => (bool) get_post_meta( $post_id, '_sipn_be_source', true ),
 		];
 	}
 	wp_reset_postdata();
@@ -210,17 +219,27 @@ foreach ( $tasting_events as $ev ) {
 									$start_disp = date( 'jS M Y', $ev['start_ts'] );
 									$end_disp   = $ev['end'] ? date( 'jS M Y', strtotime( $ev['end'] ) ) : '';
 									$location   = trim( $ev['venue'] . ( $ev['state'] ? ', ' . $ev['state'] : '' ), ', ' );
+
+									// Imported (Eventbrite) events link to the source page in a new tab;
+									// curated events keep their internal single-event page.
+									if ( $ev['is_imported'] && ! empty( $ev['book'] ) ) {
+										$card_href   = $ev['book'];
+										$card_target = ' target="_blank" rel="noopener noreferrer"';
+									} else {
+										$card_href   = home_url( '/event/' . $ev['slug'] );
+										$card_target = '';
+									}
 								?>
 									<div class="col-md-4">
 										<div class="events-block">
-											<a href="<?php echo esc_url( home_url( '/event/' . $ev['slug'] ) ); ?>">
+											<a href="<?php echo esc_url( $card_href ); ?>"<?php echo $card_target; ?>>
 												<div class="evnt-img"
 													<?php if ( $ev['image'] ) : ?>
 													style="background-image:url('<?php echo esc_url( $ev['image'] ); ?>');"
 													<?php endif; ?>>
 												</div>
 												<div class="evnt-content">
-													<h2><?php echo esc_html( $ev['title'] ); ?></h2>
+													<h2 style="color:#ffffff;"><?php echo esc_html( $ev['title'] ); ?></h2>
 													<ul>
 														<li style="color:#ffffff">
 															Date: <?php echo esc_html( $start_disp ); ?>

@@ -786,9 +786,15 @@ if(is_user_logged_in()){
                               <div class="sectionss">
                                   <div class="slideshow-container1234">
                                    
-                                   <?php  if(is_user_logged_in() && $current_user->data->validate_email=='0' ){
+                                   <?php
+                                   // Image links to the SAME place as the ad's title (product page when
+                                   // a product is linked; otherwise the ad's own click-through link).
+                                   $spons_title_link = ( ! empty($spons['product_id']) && $spons['product_title'] != '' )
+                                       ? get_permalink($spons['product_id'])
+                                       : $spons['link'];
+                                   if(is_user_logged_in() && $current_user->data->validate_email=='0' ){
                                     ?>
-                                     <a  href="<?php if(is_user_logged_in()){echo bbp_get_user_profile_url($current_user->data->ID);} else{ echo "/login?redirect_to=bar"; }?>" > <!--  <?php //echo $spons['link']; ?> -->
+                                     <a class="recordaddclick" data-actiontype="View" data-id="<?php echo $spons['spons_id']; ?>" data-from="website" href="<?php echo esc_url( $spons['is_bar'] == 1 ? ( is_user_logged_in() ? bbp_get_user_profile_url($current_user->data->ID) : '/login?redirect_to=bar' ) : $spons_title_link ); ?>" target="_blank" rel="noopener noreferrer">
                                   <?php  if($spons['image']!='' ) {  ?>
                                   <img src="<?php echo $spons['image']; ?>" loading="lazy" width="100%" alt=""> 
 
@@ -800,7 +806,9 @@ if(is_user_logged_in()){
 
                                 <?php  } else if(is_user_logged_in() && $current_user->data->validate_email=='1' ){ ?>
 
-                                   <a  href="javascript:void(0);"  data-toggle="modal" data-backdrop="static" data-target="#openpopup"> <!--  <?php //echo $spons['link']; ?> -->
+                                   <?php $ad_href = ( $spons['is_bar'] == 1 ) ? '' : $spons_title_link; if ( $ad_href ) { ?>
+                                   <a class="recordaddclick" data-actiontype="View" data-id="<?php echo $spons['spons_id']; ?>" data-from="website" href="<?php echo esc_url($ad_href); ?>" target="_blank" rel="noopener noreferrer"> <?php } else { ?>
+                                   <a  href="javascript:void(0);"  data-toggle="modal" data-backdrop="static" data-target="#openpopup"> <?php } ?>
                                   <?php  if($spons['image']!='' ) {  ?>
                                   <img src="<?php echo $spons['image']; ?>" loading="lazy" width="100%" alt=""> 
 
@@ -811,7 +819,7 @@ if(is_user_logged_in()){
                             <?php } ?></a> 
 
                                 <?php     } else{ ?>
-                                  <a  href="/login?redirect_to=bar"> <!--  <?php //echo $spons['link']; ?> -->
+                                  <a class="recordaddclick" data-actiontype="View" data-id="<?php echo $spons['spons_id']; ?>" data-from="website" href="<?php echo esc_url( $spons['is_bar'] == 1 ? '/login?redirect_to=bar' : $spons_title_link ); ?>" target="_blank" rel="noopener noreferrer">
                                   <?php  if($spons['image']!='' ) {  ?>
                                   <img src="<?php echo $spons['image']; ?>" loading="lazy" width="100%" alt=""> 
 

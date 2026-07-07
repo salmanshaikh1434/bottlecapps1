@@ -10449,6 +10449,16 @@ function bar_featured_clicks_admin_menu()
 		'bar_render_sponsored_ads_report'
 	);
 
+	// Inactive Users (no posts and no likes in the lookback window; default 3 months).
+	add_submenu_page(
+		'sipn-stats',
+		'Inactive Users',
+		'Inactive Users',
+		'manage_options',
+		'bar-inactive-users',
+		'bar_render_inactive_users_report'
+	);
+
 	// Redirect/Alias for bar-featured-views so old links/bookmarks don't break
 	add_submenu_page(
 		null,
@@ -12946,6 +12956,207 @@ function bar_ajax_export_user_engagement()
 		echo '<td>' . (int) $row['total_posts'] . '</td>';
 		echo '<td>' . (int) $row['total_comments'] . '</td>';
 		echo '<td>' . (int) $row['total_likes'] . '</td>';
+		echo '</tr>';
+	}
+	echo '</table></body></html>';
+	exit;
+}
+
+/* ============================================================
+ * Inactive Users report
+ * Inactive = registered on/before the window start AND with zero
+ * posts and zero likes within the window (default: last 3 months).
+ * "Posts" = published bbPress top-level replies (timeline posts);
+ * "Likes" = wp_reply_likes (status 0). Comments are not counted.
+ * ============================================================ */
+
+/**
+ * Date range for the Inactive Users report. Defaults to the last 3 months.
+ *
+ * @return array [ $start_date, $end_date ] as Y-m-d.
+ */
+function bar_inactive_users_date_range()
+{
+	$start_date = (isset($_GET['start_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['start_date'])) ? $_GET['start_date'] : '';
+	$end_date   = (isset($_GET['end_date']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $_GET['end_date'])) ? $_GET['end_date'] : '';
+
+	if ($start_date === '' && $end_date === '') {
+		$end_date   = date('Y-m-d');
+		$start_date = date('Y-m-d', strtotime('-3 months'));
+	} elseif ($start_date === '') {
+		$start_date = date('Y-m-d', strtotime($end_date . ' -3 months'));
+	} elseif ($end_date === '') {
+		$end_date = date('Y-m-d');
+	}
+
+	if (strtotime($start_date) > strtotime($end_date)) {
+		$tmp = $start_date; $start_date = $end_date; $end_date = $tmp;
+	}
+
+	return array($start_date, $end_date);
+}
+
+/**
+ * Users with no posts and no likes in the given window.
+ *
+ * @return array Rows: user_id, user_email, display_name, user_registered, last_post, last_like.
+ */
+function bar_get_inactive_users_rows($start_date, $end_date)
+{
+	global $wpdb;
+
+	$start = $start_date . ' 00:00:00';
+	$end   = $end_date . ' 23:59:59';
+
+	$sql = $wpdb->prepare(
+		"SELECT
+			u.ID AS user_id,
+			u.user_email,
+			u.display_name,
+			u.user_registered,
+			(SELECT MAX(p2.post_date) FROM {$wpdb->posts} p2
+				WHERE p2.post_author = u.ID AND p2.post_type = 'reply' AND p2.post_status = 'publish') AS last_post,
+			(SELECT MAX(rl2.created) FROM wp_reply_likes rl2
+				WHERE rl2.user_id = u.ID AND rl2.status = '0') AS last_like
+		 FROM {$wpdb->users} u
+		 WHERE u.ID != 5414
+		   AND u.user_registered <= %s
+		   AND NOT EXISTS (
+				SELECT 1 FROM {$wpdb->posts} p
+				WHERE p.post_author = u.ID
+				  AND p.post_type = 'reply'
+				  AND p.post_status = 'publish'
+				  AND p.post_date BETWEEN %s AND %s
+				  AND p.ID NOT IN (SELECT post_id FROM {$wpdb->postmeta} WHERE meta_key = '_bbp_reply_to')
+		   )
+		   AND NOT EXISTS (
+				SELECT 1 FROM wp_reply_likes rl
+				WHERE rl.user_id = u.ID
+				  AND rl.status = '0'
+				  AND rl.created BETWEEN %s AND %s
+		   )
+		 ORDER BY (last_post IS NULL), last_post DESC, u.user_registered DESC",
+		$start,
+		$start, $end,
+		$start, $end
+	);
+
+	return $wpdb->get_results($sql, ARRAY_A);
+}
+
+/** Format a datetime string for display, or a dash if empty. */
+function bar_inactive_fmt_date($val)
+{
+	if (empty($val) || $val === '0000-00-00 00:00:00') {
+		return 'Never';
+	}
+	$t = strtotime($val);
+	return $t ? date('M j, Y', $t) : 'Never';
+}
+
+/**
+ * Renders the Inactive Users report.
+ */
+function bar_render_inactive_users_report()
+{
+	if (!current_user_can('manage_options')) {
+		return;
+	}
+
+	list($start_date, $end_date) = bar_inactive_users_date_range();
+	$rows = bar_get_inactive_users_rows($start_date, $end_date);
+
+	$export_url = add_query_arg(array(
+		'action'     => 'bar_export_inactive_users',
+		'start_date' => $start_date,
+		'end_date'   => $end_date,
+		'_wpnonce'   => wp_create_nonce('bar_export_inactive_users'),
+	), admin_url('admin-ajax.php'));
+	?>
+	<div class="wrap">
+		<h1>Inactive Users</h1>
+
+		<form method="get" style="margin:12px 0; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+			<input type="hidden" name="page" value="bar-inactive-users" />
+			<label>From <input type="date" name="start_date" value="<?php echo esc_attr($start_date); ?>" /></label>
+			<label>To <input type="date" name="end_date" value="<?php echo esc_attr($end_date); ?>" /></label>
+			<button type="submit" class="button button-primary">Filter</button>
+			<a class="button" href="<?php echo esc_url($export_url); ?>" style="margin-left:auto;">&#x2193; Export to Excel</a>
+		</form>
+
+		<p class="description">
+			Members who registered on or before <?php echo esc_html($start_date); ?> and made
+			<strong>no posts and no likes</strong> between <?php echo esc_html($start_date); ?>
+			and <?php echo esc_html($end_date); ?>. (Comments are not counted toward activity.)
+		</p>
+
+		<p><strong>Inactive users:</strong> <?php echo (int) count($rows); ?></p>
+
+		<table class="wp-list-table widefat fixed striped">
+			<thead>
+				<tr>
+					<th>User ID</th>
+					<th>Name</th>
+					<th>Email</th>
+					<th>Registered</th>
+					<th>Last Post</th>
+					<th>Last Like</th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php if (empty($rows)) { ?>
+					<tr><td colspan="6">No inactive users for this range.</td></tr>
+				<?php } else {
+					foreach ($rows as $row) { ?>
+						<tr>
+							<td><?php echo (int) $row['user_id']; ?></td>
+							<td><?php echo esc_html($row['display_name']); ?></td>
+							<td><?php echo esc_html($row['user_email']); ?></td>
+							<td><?php echo esc_html(bar_inactive_fmt_date($row['user_registered'])); ?></td>
+							<td><?php echo esc_html(bar_inactive_fmt_date($row['last_post'])); ?></td>
+							<td><?php echo esc_html(bar_inactive_fmt_date($row['last_like'])); ?></td>
+						</tr>
+					<?php }
+				} ?>
+			</tbody>
+		</table>
+	</div>
+	<?php
+}
+
+/**
+ * Excel export for the Inactive Users report.
+ */
+add_action('wp_ajax_bar_export_inactive_users', 'bar_ajax_export_inactive_users');
+function bar_ajax_export_inactive_users()
+{
+	if (!current_user_can('manage_options')) {
+		wp_die('Unauthorized');
+	}
+	check_admin_referer('bar_export_inactive_users');
+
+	list($start_date, $end_date) = bar_inactive_users_date_range();
+	$rows = bar_get_inactive_users_rows($start_date, $end_date);
+
+	$filename = 'inactive-users-' . $start_date . '-to-' . $end_date . '.xls';
+
+	header('Content-Type: application/vnd.ms-excel; charset=UTF-8');
+	header('Content-Disposition: attachment; filename="' . $filename . '"');
+	header('Pragma: no-cache');
+	header('Expires: 0');
+
+	echo '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+	echo '<head><meta charset="UTF-8"><style>td{mso-number-format:"\@";}</style></head><body>';
+	echo '<table border="1">';
+	echo '<tr><th>User ID</th><th>Name</th><th>Email</th><th>Registered</th><th>Last Post</th><th>Last Like</th></tr>';
+	foreach ($rows as $row) {
+		echo '<tr>';
+		echo '<td>' . (int) $row['user_id'] . '</td>';
+		echo '<td>' . esc_html($row['display_name']) . '</td>';
+		echo '<td>' . esc_html($row['user_email']) . '</td>';
+		echo '<td>' . esc_html(bar_inactive_fmt_date($row['user_registered'])) . '</td>';
+		echo '<td>' . esc_html(bar_inactive_fmt_date($row['last_post'])) . '</td>';
+		echo '<td>' . esc_html(bar_inactive_fmt_date($row['last_like'])) . '</td>';
 		echo '</tr>';
 	}
 	echo '</table></body></html>';
